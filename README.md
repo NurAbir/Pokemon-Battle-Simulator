@@ -26,6 +26,7 @@ It’s designed to replicate the strategy and excitement of Pokémon Showdown wh
 - 📊 **Battle Logs** and stat summaries  
 - 🌐 **Multiplayer Support (optional)** using sockets or REST API  
 
+
 ---
 
 ### 🧩 Tech Stack  
