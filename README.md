@@ -13,8 +13,7 @@ _A fun and strategic Pokémon battle experience — inspired by Pokémon Showdow
 ---
 
 ### 🌟 Overview  
-This project is a **Pokémon Battle Simulator** where players can choose Pokémon, set moves, and battle in real time or turn-based mode.  
-It’s designed to replicate the strategy and excitement of Pokémon Showdown while keeping the codebase simple and modular for learning or extension.  
+This project is a **Pokémon Battle Simulator** where players can choose Pokémon, set moves, and battle in real-time or turn-based mode. It’s designed to replicate the strategy and excitement of Pokémon Showdown while keeping the codebase simple and modular for learning or extension.  
 
 ---
 
