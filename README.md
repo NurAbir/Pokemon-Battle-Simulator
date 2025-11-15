@@ -47,4 +47,4 @@ This project is a **Pokémon Battle Simulator** where players can choose Pokémo
 ### ⚠️ Disclaimer  
 This project is made **for educational and non-commercial purposes only**.  
 All Pokémon names, sprites, and related assets are **the property of Nintendo, Game Freak, and The Pokémon Company**.  
-This simulator is a **fan-made educational project** and does not claim ownership of any official Pokémon content.  
+This simulator is just a **fan-made educational project** and does not claim ownership of any official Pokémon content.  
