@@ -4,11 +4,11 @@ _A fun and strategic Pokémon battle experience — inspired by Pokémon Showdow
 ---
 
 ###  Table of Contents  
-1. [Overview](#-overview)  
-2. [Features](#-features)  
-3. [Tech-Stack](#-tech-stack)  
-4. [Future-Plans](#-future-plans)  
-5. [Disclaimer](#-disclaimer)  
+1. [Overview](#overview)  
+2. [Features](#features)  
+3. [Tech-Stack](#tech-stack)  
+4. [Future-Plans](#future-plans)  
+5. [Disclaimer](#disclaimer)  
 
 ---
 
