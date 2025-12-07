@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokémon Battle Simulator - Profile</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #89CFF0 0%, #4A90E2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            border-radius: 30px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-header {
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .nav-btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .home-btn {
+            background: white;
+            color: #333;
+        }
+
+        .logout-btn {
+            background: #FF4444;
+            color: white;
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 380px 1fr 320px;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .profile-section, .party-section, .history-section {
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 20px;
+            padding: 25px;
+        }
+
+        .profile-avatar {
+            width: 200px;
+            height: 200px;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            position: relative;
+            cursor: pointer;
+        }
+
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .upload-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            color: white;
+            font-size: 14px;
+        }
+
+        .profile-avatar:hover .upload-overlay {
+            opacity: 1;
+        }
+
+        .profile-name {
+            background: rgba(255, 255, 255, 0.6);
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .profile-name h2 {
+            font-size: 28px;
+            color: #333;
+        }
+
+        .profile-id {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .edit-icon {
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .profile-bio {
+            background: rgba(255, 255, 255, 0.6);
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            color: #555;
+        }
+
+        .ranked-elo {
+            background: rgba(255, 255, 255, 0.5);
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .ranked-elo h3 {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .elo-status {
+            font-size: 32px;
+            color: #FF4444;
+            font-weight: 700;
+        }
+
+        .party-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .party-header h2 {
+            font-size: 32px;
+            color: #333;
+        }
+
+        .change-btn {
+            background: #2196F3;
+            color: white;
+            padding: 10px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .pokemon-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.3);
+            padding: 20px;
+            border-radius: 15px;
+        }
+
+        .pokemon-slot {
+            aspect-ratio: 1;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .pokemon-slot img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            padding: 10px;
+        }
+
+        .history-section h2 {
+            font-size: 32px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .history-item {
+            border-radius: 15px;
+            padding: 20px;
+        }
+
+        .history-item.win {
+            background: rgba(144, 238, 144, 0.6);
+        }
+
+        .history-item.lose {
+            background: rgba(255, 182, 193, 0.6);
+        }
+
+        .history-result {
+            font-size: 28px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .history-players {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        .player-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid white;
+        }
+
+        .player-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .vs-text {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .player-names {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .player-name {
+            font-size: 16px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .statistics-section {
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 20px;
+            padding: 30px;
+        }
+
+        .statistics-section h2 {
+            font-size: 28px;
+            color: #333;
+            margin-bottom: 25px;
+        }
+
+        .stat-row {
+            display: grid;
+            grid-template-columns: 200px 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        .stat-label {
+            font-size: 22px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            color: #333;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .stat-header {
+            font-size: 18px;
+            color: #555;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 20px;
+            width: 500px;
+            max-width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            padding: 25px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            color: #333;
+        }
+
+        .close-icon {
+            cursor: pointer;
+            font-size: 24px;
+            color: #666;
+        }
+
+        .modal-body {
+            padding: 25px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+            margin-top: 25px;
+        }
+
+        .modal-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .cancel-btn {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .save-btn {
+            background: #2196F3;
+            color: white;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 1200px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="loadingScreen" class="loading">Loading profile...</div>
+        <div id="errorScreen" class="error" style="display: none;"></div>
+        <div id="mainContent" style="display: none;">
+            <!-- Navigation -->
+            <div class="nav-header">
+                <button class="nav-btn home-btn" onclick="window.location.href='index.html'">Home</button>
+                <button class="nav-btn logout-btn" onclick="logout()">Logout</button>
+            </div>
+
+            <!-- Main Layout -->
+            <div class="main-layout">
+                <!-- Profile Section -->
+                <div class="profile-section">
+                    <div class="profile-avatar" onclick="document.getElementById('avatarInput').click()">
+                        <img id="profileAvatar" src="https://images.unsplash.com/photo-1511367461989-f85a21fda167?w=400&h=400&fit=crop" alt="Profile">
+                        <div class="upload-overlay">Click to upload</div>
+                        <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                    </div>
+                    <div class="profile-name">
+                        <div>
+                            <h2 id="username">Loading...</h2>
+                            <div class="profile-id" id="userId">ID: ...</div>
+                        </div>
+                        <span class="edit-icon" onclick="openEditModal()">✏️</span>
+                    </div>
+                    <div class="profile-bio" id="bio">Loading...</div>
+                    <div class="ranked-elo">
+                        <h3>Ranked Elo</h3>
+                        <div class="elo-status" id="eloRating">...</div>
+                    </div>
+                </div>
+
+                <!-- Party Section -->
+                <div class="party-section">
+                    <div class="party-header">
+                        <h2>Your Party</h2>
+                        <button class="change-btn">Change</button>
+                    </div>
+                    <div class="pokemon-grid" id="pokemonGrid">
+                        <!-- Pokemon will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- History Section -->
+                <div class="history-section">
+                    <h2>History</h2>
+                    <div class="history-list" id="historyList">
+                        <!-- History will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Section -->
+            <div class="statistics-section">
+                <h2>Statistics</h2>
+                <div class="stat-row">
+                    <div></div>
+                    <div class="stat-header">matches played</div>
+                    <div class="stat-header">win/loss ratio</div>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-label">Normal Mode:</div>
+                    <div class="stat-value" id="normalMatches">0</div>
+                    <div class="stat-value" id="normalWinRate">0%</div>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-label">Ranked Mode:</div>
+                    <div class="stat-value" id="rankedMatches">0</div>
+                    <div class="stat-value" id="rankedWinRate">N/A</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Edit Profile</h2>
+                <span class="close-icon" onclick="closeEditModal()">✖</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="editUsername" maxlength="20">
+                </div>
+                <div class="form-group">
+                    <label>Bio</label>
+                    <textarea id="editBio" rows="4" maxlength="200"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button class="modal-btn cancel-btn" onclick="closeEditModal()">Cancel</button>
+                    <button class="modal-btn save-btn" onclick="saveProfile()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+        let currentUser = null;
+
+        // Check if user is logged in
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        // Load profile data
+        async function loadProfile() {
+            try {
+                const response = await fetch(`${API_URL}/user/profile`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to load profile');
+                }
+
+                const data = await response.json();
+                currentUser = data.user;
+                displayProfile(currentUser);
+                loadStatistics();
+                loadHistory();
+            } catch (error) {
+                showError('Failed to load profile. Please try logging in again.');
+                console.error(error);
+            }
+        }
+
+        // Display profile data
+        function displayProfile(user) {
+            document.getElementById('username').textContent = user.username;
+            document.getElementById('userId').textContent = `ID: ${user.userId}`;
+            document.getElementById('bio').textContent = user.bio || 'No bio yet...';
+            document.getElementById('eloRating').textContent = user.eloRating || 'Unranked';
+            
+            if (user.avatar) {
+                document.getElementById('profileAvatar').src = API_URL.replace('/api', '') + user.avatar;
+            }
+
+            // Show main content, hide loading
+            document.getElementById('loadingScreen').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+
+            // Load Pokemon grid (dummy data for now)
+            loadPokemonGrid();
+        }
+
+        // Load Pokemon grid
+        function loadPokemonGrid() {
+            const pokemonGrid = document.getElementById('pokemonGrid');
+            const dummyPokemon = [94, 6, 130, 123, 151, 65]; // Gengar, Charizard, Gyarados, Scyther, Mew, Alakazam
+            
+            pokemonGrid.innerHTML = '';
+            dummyPokemon.forEach(id => {
+                const slot = document.createElement('div');
+                slot.className = 'pokemon-slot';
+                slot.innerHTML = `<img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png" alt="Pokemon ${id}">`;
+                pokemonGrid.appendChild(slot);
+            });
+        }
+
+        // Load statistics
+        async function loadStatistics() {
+            try {
+                const response = await fetch(`${API_URL}/user/statistics`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const stats = data.statistics;
+                    
+                    document.getElementById('normalMatches').textContent = stats.totalBattles || 0;
+                    document.getElementById('normalWinRate').textContent = stats.winRate ? `${stats.winRate.toFixed(0)}%` : '0%';
+                }
+            } catch (error) {
+                console.error('Failed to load statistics:', error);
+            }
+        }
+
+        // Load battle history
+        async function loadHistory() {
+            try {
+                const response = await fetch(`${API_URL}/user/history`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayHistory(data.history);
+                }
+            } catch (error) {
+                console.error('Failed to load history:', error);
+                // Show dummy history if API fails
+                displayDummyHistory();
+            }
+        }
+
+        // Display battle history
+        function displayHistory(battles) {
+            const historyList = document.getElementById('historyList');
+            
+            if (!battles || battles.length === 0) {
+                displayDummyHistory();
+                return;
+            }
+
+            historyList.innerHTML = '';
+            battles.forEach(battle => {
+                const isWin = battle.winnerId === currentUser.userId;
+                const opponent = battle.player1Id === currentUser.userId ? battle.player2Id : battle.player1Id;
+                
+                const item = document.createElement('div');
+                item.className = `history-item ${isWin ? 'win' : 'lose'}`;
+                item.innerHTML = `
+                    <div class="history-result">${isWin ? 'Win' : 'Lose'}</div>
+                    <div class="history-players">
+                        <div class="player-avatar">
+                            <img src="${currentUser.avatar || 'https://images.unsplash.com/photo-1511367461989-f85a21fda167?w=100'}" alt="${currentUser.username}">
+                        </div>
+                        <span class="vs-text">vs</span>
+                        <div class="player-avatar">
+                            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100" alt="Opponent">
+                        </div>
+                    </div>
+                    <div class="player-names">
+                        <span class="player-name">${currentUser.username}</span>
+                        <span class="player-name">Opponent</span>
+                    </div>
+                `;
+                historyList.appendChild(item);
+            });
+        }
+
+        // Display dummy history
+        function displayDummyHistory() {
+            const historyList = document.getElementById('historyList');
+            const dummyHistory = [
+                { result: 'win', opponent: 'Abir' },
+                { result: 'lose', opponent: 'Mehedi' },
+                { result: 'win', opponent: 'Abir' },
+                { result: 'lose', opponent: 'Mehedi' }
+            ];
+
+            historyList.innerHTML = '';
+            dummyHistory.forEach(battle => {
+                const item = document.createElement('div');
+                item.className = `history-item ${battle.result}`;
+                item.innerHTML = `
+                    <div class="history-result">${battle.result === 'win' ? 'Win' : 'Lose'}</div>
+                    <div class="history-players">
+                        <div class="player-avatar">
+                            <img src="${currentUser?.avatar || 'https://images.unsplash.com/photo-1511367461989-f85a21fda167?w=100'}" alt="You">
+                        </div>
+                        <span class="vs-text">vs</span>
+                        <div class="player-avatar">
+                            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100" alt="${battle.opponent}">
+                        </div>
+                    </div>
+                    <div class="player-names">
+                        <span class="player-name">${currentUser?.username || 'You'}</span>
+                        <span class="player-name">${battle.opponent}</span>
+                    </div>
+                `;
+                historyList.appendChild(item);
+            });
+        }
+
+        // Upload avatar
+        document.getElementById('avatarInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (file.size > 5242880) {
+                alert('Image size should be less than 5MB');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('avatar', file);
+
+            try {
+                const response = await fetch(`${API_URL}/user/upload-avatar`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('profileAvatar').src = API_URL.replace('/api', '') + data.avatar;
+                    alert('Avatar updated successfully!');
+                } else {
+                    alert('Failed to upload avatar');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert('Failed to upload avatar');
+            }
+        });
+
+        // Edit profile modal
+        function openEditModal() {
+            document.getElementById('editUsername').value = currentUser.username;
+            document.getElementById('editBio').value = currentUser.bio || '';
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('active');
+        }
+
+        // Save profile
+        async function saveProfile() {
+            const username = document.getElementById('editUsername').value;
+            const bio = document.getElementById('editBio').value;
+
+            if (!username.trim()) {
+                alert('Username cannot be empty');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/user/update`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ username, bio })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser.username = data.user.username;
+                    currentUser.bio = data.user.bio;
+                    displayProfile(currentUser);
+                    closeEditModal();
+                    alert('Profile updated successfully!');
+                } else {
+                    alert('Failed to update profile');
+                }
+            } catch (error) {
+                console.error('Update error:', error);
+                alert('Failed to update profile');
+            }
+        }
+
+        // Logout
+        async function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                try {
+                    await fetch(`${API_URL}/auth/logout`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                } catch (error) {
+                    console.error('Logout error:', error);
+                }
+                
+                localStorage.removeItem('token');
+                window.location.href = 'login.html';
+            }
+        }
+
+        // Show error
+        function showError(message) {
+            const errorScreen = document.getElementById('errorScreen');
+            errorScreen.textContent = message;
+            errorScreen.style.display = 'block';
+            document.getElementById('loadingScreen').style.display = 'none';
+        }
+
+        // Load profile on page load
+        loadProfile();
+    </script>
+</body>
+</html>

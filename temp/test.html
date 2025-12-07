@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Tester</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        .response {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        h2 {
+            color: #333;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Pokémon Battle Simulator - API Tester</h1>
+        
+        <h2>1. Health Check</h2>
+        <button onclick="testHealth()">Test Server Health</button>
+        
+        <h2>2. Register User</h2>
+        <input type="text" id="regUsername" placeholder="Username" value="ash">
+        <input type="email" id="regEmail" placeholder="Email" value="ash@pokemon.com">
+        <input type="password" id="regPassword" placeholder="Password" value="pikachu123">
+        <button onclick="register()">Register</button>
+        
+        <h2>3. Login</h2>
+        <input type="email" id="loginEmail" placeholder="Email" value="ash@pokemon.com">
+        <input type="password" id="loginPassword" placeholder="Password" value="pikachu123">
+        <button onclick="login()">Login</button>
+        
+        <h2>4. Get Profile (requires login)</h2>
+        <button onclick="getProfile()">Get My Profile</button>
+        
+        <h2>5. Update Profile</h2>
+        <input type="text" id="newUsername" placeholder="New Username">
+        <input type="text" id="newBio" placeholder="New Bio">
+        <button onclick="updateProfile()">Update Profile</button>
+        
+        <div class="response" id="response">
+            Response will appear here...
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+        let token = localStorage.getItem('token') || '';
+
+        function displayResponse(data, isError = false) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.className = isError ? 'response error' : 'response success';
+            responseDiv.textContent = JSON.stringify(data, null, 2);
+            
+            // Save token if present
+            if (data.token) {
+                token = data.token;
+                localStorage.setItem('token', token);
+                console.log('Token saved:', token);
+            }
+        }
+
+        async function testHealth() {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayResponse({ error: error.message }, true);
+            }
+        }
+
+        async function register() {
+            try {
+                const response = await fetch(`${API_URL}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('regUsername').value,
+                        email: document.getElementById('regEmail').value,
+                        password: document.getElementById('regPassword').value
+                    })
+                });
+                const data = await response.json();
+                displayResponse(data, !response.ok);
+            } catch (error) {
+                displayResponse({ error: error.message }, true);
+            }
+        }
+
+        async function login() {
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: document.getElementById('loginEmail').value,
+                        password: document.getElementById('loginPassword').value
+                    })
+                });
+                const data = await response.json();
+                displayResponse(data, !response.ok);
+            } catch (error) {
+                displayResponse({ error: error.message }, true);
+            }
+        }
+
+        async function getProfile() {
+            if (!token) {
+                displayResponse({ error: 'Please login first!' }, true);
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/user/profile`, {
+                    headers: { 
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                displayResponse(data, !response.ok);
+            } catch (error) {
+                displayResponse({ error: error.message }, true);
+            }
+        }
+
+        async function updateProfile() {
+            if (!token) {
+                displayResponse({ error: 'Please login first!' }, true);
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/user/update`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        username: document.getElementById('newUsername').value,
+                        bio: document.getElementById('newBio').value
+                    })
+                });
+                const data = await response.json();
+                displayResponse(data, !response.ok);
+            } catch (error) {
+                displayResponse({ error: error.message }, true);
+            }
+        }
+
+        // Display current token on load
+        if (token) {
+            console.log('Token loaded from storage:', token);
+        }
+    </script>
+</body>
+</html>
