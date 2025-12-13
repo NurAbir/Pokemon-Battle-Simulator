@@ -184,3 +184,55 @@ exports.getBattleHistory = async (req, res) => {
     });
   }
 };
+// In userController.js - create a new endpoint
+exports.getFullProfile = async (req, res) => {
+  try {
+    const user = await User.findOne({ userId: req.user.userId }).select('-password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    let stats = await Statistics.findOne({ userId: req.user.userId });
+    if (!stats) {
+      stats = await Statistics.create({
+        statId: generateId('stat'),
+        userId: req.user.userId
+      });
+    }
+    await stats.updateStats();
+
+    const team = await Team.findOne({ userId: req.user.userId });
+
+    const battles = await Battle.find({
+      $or: [{ player1Id: req.user.userId }, { player2Id: req.user.userId }],
+      battleStatus: 'completed'
+    })
+    .sort({ endTime: -1 })
+    .limit(10);
+
+    const formattedHistory = battles.map(battle => ({
+      battleId: battle.battleId,
+      result: battle.winnerId === req.user.userId ? 'Win' : 'Lose',
+      opponent: battle.player1Id === req.user.userId ? battle.player2Id : battle.player1Id,
+      date: battle.endTime
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        user,
+        stats: {
+          normalMatches: stats.totalBattles || 0,
+          normalWinRate: stats.winRate || 0,
+          rankedMatches: 0,
+          rankedWinRate: 'N/A'
+        },
+        team,
+        history: formattedHistory
+      }
+    });
+  } catch (error) {
+    console.error('Get full profile error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

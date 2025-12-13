@@ -6,10 +6,13 @@ import ForgotPassword from './components/ForgotPassword';
 import VerifyCode from './components/VerifyCode';
 import ResetPassword from './components/ResetPassword';
 import TeamBuilder from './components/TeamBuilder';
+import ProfilePage from './components/ProfilePage';
+
 
 function App() {
   return (
     <Routes>
+      <Route path="/profile" element={<ProfilePage />} />
       <Route path="/" element={<Navigate to="/login" />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
