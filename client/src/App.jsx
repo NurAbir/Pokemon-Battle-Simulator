@@ -5,6 +5,7 @@ import Signup from './components/Signup';
 import ForgotPassword from './components/ForgotPassword';
 import VerifyCode from './components/VerifyCode';
 import ResetPassword from './components/ResetPassword';
+import TeamBuilder from './components/TeamBuilder';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/verify-code" element={<VerifyCode />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/team-builder" element={<TeamBuilder />} />
     </Routes>
   );
 }
