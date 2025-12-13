@@ -1,27 +1,25 @@
 const express = require('express');
 const router = express.Router();
-<<<<<<< HEAD
-const authController = require('../controllers/authController');
-
-router.post('/signup', authController.signup);
-router.post('/login', authController.login);
-router.post('/forgot-password', authController.forgotPassword);
-router.post('/verify-code', authController.verifyCode);
-router.post('/reset-password', authController.resetPassword);
-=======
 const {
+  signup,
   register,
   login,
-  logout
+  logout,
+  forgotPassword,
+  verifyCode,
+  resetPassword
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
 // Public routes
+router.post('/signup', signup);
 router.post('/register', register);
 router.post('/login', login);
+router.post('/forgot-password', forgotPassword);
+router.post('/verify-code', verifyCode);
+router.post('/reset-password', resetPassword);
 
 // Protected routes
 router.post('/logout', protect, logout);
->>>>>>> origin/Lumi-Clone
 
 module.exports = router;
