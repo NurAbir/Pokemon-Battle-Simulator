@@ -126,7 +126,7 @@ const Dashboard = () => {
         {/* Welcome Message */}
         {user && (
           <div style={styles.welcomeSection}>
-            <h2 style={styles.welcomeTitle}>Welcome back, {user.username}! 👋</h2>
+            <h2 style={styles.welcomeTitle}>Welcome back, {user.username}!</h2>
             <p style={styles.welcomeText}>Ready for your next battle?</p>
           </div>
         )}
