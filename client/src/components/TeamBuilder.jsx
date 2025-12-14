@@ -1,283 +1,428 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import '../styles/teamBuilder.css';
-import PokemonSelector from './PokemonSelector';
-import PokemonDetails from './PokemonDetails';
+import React, { useState, useEffect } from 'react';
+import '../styles/TeamBuilder.css';
 
-export default function TeamBuilder() {
-    const [teams, setTeams] = useState([]);
-    const [selectedTeam, setSelectedTeam] = useState(null);
-    const [selectedPokemonIndex, setSelectedPokemonIndex] = useState(null);
-    const [showNewTeamModal, setShowNewTeamModal] = useState(false);
-    const [showPokemonSelector, setShowPokemonSelector] = useState(false);
-    const [newTeamName, setNewTeamName] = useState('');
+const TeamBuilder = () => {
+  const [allPokemon, setAllPokemon] = useState([]);
+  const [allMoves, setAllMoves] = useState([]);
+  const [allAbilities, setAllAbilities] = useState([]);
+  const [team, setTeam] = useState([]);
+  const [teamName, setTeamName] = useState('My Team');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [editingPokemon, setEditingPokemon] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState('');
 
-    // Default pokemon structure
-    const defaultPokemon = {
-        id: null,
-        name: '',
-        nickname: '',
-        level: 50,
-        gender: 'M',
-        happiness: 255,
-        nature: 'Serious',
-        ability: '',
-        item: '',
-        hiddenPowerType: 'Dark',
-        moves: ['', '', '', ''],
-        baseStats: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
-        evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
-        ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 },
-        types: [],
-        abilities: [],
-        image: ''
-    };
+  // Fetch initial data
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
 
-    const calculateStat = (base, iv, ev, level, nature, stat) => {
-        if (stat === 'hp') {
-            return Math.floor(((2 * base + iv + Math.floor(ev / 4)) * level) / 100) + level + 10;
-        } else {
-            let baseStat = Math.floor(((2 * base + iv + Math.floor(ev / 4)) * level) / 100) + 5;
-            // Apply nature (simplified - you can add full nature logic)
-            return baseStat;
+  const fetchInitialData = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token'); // Adjust based on your auth setup
+      
+      // Fetch Pokemon, moves, abilities, and existing team
+      const [pokemonRes, movesRes, abilitiesRes, teamRes] = await Promise.all([
+        fetch('/api/pokemon', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch('/api/moves', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch('/api/abilities', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch('/api/team/my-team', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+
+      const pokemonData = await pokemonRes.json();
+      const movesData = await movesRes.json();
+      const abilitiesData = await abilitiesRes.json();
+      
+      setAllPokemon(pokemonData.data || []);
+      setAllMoves(movesData.data || []);
+      setAllAbilities(abilitiesData.data || []);
+
+      // Load existing team if available
+      if (teamRes.ok) {
+        const teamData = await teamRes.json();
+        if (teamData.success && teamData.data) {
+          setTeam(teamData.data.pokemon || []);
+          setTeamName(teamData.data.teamName || 'My Team');
         }
+      }
+
+      setLoading(false);
+    } catch (err) {
+      setError('Failed to load data: ' + err.message);
+      setLoading(false);
+    }
+  };
+
+  // Search Pokemon
+  const handleSearch = async (query) => {
+    setSearchQuery(query);
+    if (query.length < 2) {
+      fetchInitialData();
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/pokemon?search=${query}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      setAllPokemon(data.data || []);
+    } catch (err) {
+      console.error('Search error:', err);
+    }
+  };
+
+  // Add Pokemon to team
+  const addPokemonToTeam = (pokemon) => {
+    if (team.length >= 6) {
+      setError('Team is full! Maximum 6 Pokemon allowed.');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    const newMember = {
+      pokemonId: pokemon.pokemonId,
+      name: pokemon.name,
+      types: pokemon.types,
+      baseStats: pokemon.baseStats,
+      selectedMoves: [],
+      selectedAbility: null
     };
 
-    const handleCreateTeam = () => {
-        if (newTeamName.trim()) {
-            const newTeam = {
-                id: Math.max(...teams.map(t => t.id), 0) + 1,
-                name: newTeamName,
-                pokemons: Array(6).fill(null)
-            };
-            setTeams([...teams, newTeam]);
-            setSelectedTeam(newTeam.id);
-            setNewTeamName('');
-            setShowNewTeamModal(false);
-        }
-    };
+    setTeam([...team, newMember]);
+    setSelectedSlot(null);
+  };
 
-    const handleDeleteTeam = (teamId) => {
-        setTeams(teams.filter(t => t.id !== teamId));
-        if (selectedTeam === teamId) {
-            setSelectedTeam(null);
-        }
-    };
+  // Remove Pokemon from team
+  const removePokemon = (index) => {
+    setTeam(team.filter((_, i) => i !== index));
+  };
 
-    const handleSlotClick = (index) => {
-        setSelectedPokemonIndex(index);
-        const currentTeam = teams.find(t => t.id === selectedTeam);
-        if (!currentTeam?.pokemons[index]) {
-            setShowPokemonSelector(true);
-        }
-    };
+  // Open move/ability editor
+  const openEditor = (index) => {
+    setEditingPokemon(index);
+  };
 
-    const handleAddPokemon = (pokemon) => {
-        if (selectedTeam && selectedPokemonIndex !== null) {
-            const updatedTeams = teams.map(t => {
-                if (t.id === selectedTeam) {
-                    const newPokemons = [...t.pokemons];
-                    newPokemons[selectedPokemonIndex] = { 
-                        ...defaultPokemon, 
-                        ...pokemon,
-                        nickname: pokemon.name
-                    };
-                    return { ...t, pokemons: newPokemons };
-                }
-                return t;
-            });
-            setTeams(updatedTeams);
-            setShowPokemonSelector(false);
-        }
-    };
+  // Toggle move selection
+  const toggleMove = (move) => {
+    if (editingPokemon === null) return;
 
-    const handleUpdatePokemon = (pokemonData) => {
-        if (selectedTeam && selectedPokemonIndex !== null) {
-            const updatedTeams = teams.map(t => {
-                if (t.id === selectedTeam) {
-                    const newPokemons = [...t.pokemons];
-                    newPokemons[selectedPokemonIndex] = pokemonData;
-                    return { ...t, pokemons: newPokemons };
-                }
-                return t;
-            });
-            setTeams(updatedTeams);
-        }
-    };
-
-    const handleRemovePokemon = (index) => {
-        const updatedTeams = teams.map(t => {
-            if (t.id === selectedTeam) {
-                const newPokemons = [...t.pokemons];
-                newPokemons[index] = null;
-                return { ...t, pokemons: newPokemons };
-            }
-            return t;
+    const updatedTeam = [...team];
+    const pokemon = updatedTeam[editingPokemon];
+    
+    const moveIndex = pokemon.selectedMoves.findIndex(m => m.moveId === move.moveId);
+    
+    if (moveIndex > -1) {
+      // Remove move
+      pokemon.selectedMoves.splice(moveIndex, 1);
+    } else {
+      // Add move (max 4)
+      if (pokemon.selectedMoves.length < 4) {
+        pokemon.selectedMoves.push({
+          moveId: move.moveId,
+          name: move.name,
+          type: move.type,
+          power: move.power,
+          accuracy: move.accuracy
         });
-        setTeams(updatedTeams);
-        setSelectedPokemonIndex(null);
+      } else {
+        setError('Maximum 4 moves per Pokemon!');
+        setTimeout(() => setError(null), 3000);
+        return;
+      }
+    }
+    
+    setTeam(updatedTeam);
+  };
+
+  // Select ability
+  const selectAbility = (ability) => {
+    if (editingPokemon === null) return;
+
+    const updatedTeam = [...team];
+    updatedTeam[editingPokemon].selectedAbility = {
+      abilityId: ability.abilityId,
+      name: ability.name,
+      description: ability.description
     };
+    setTeam(updatedTeam);
+  };
 
-    const currentTeam = teams.find(t => t.id === selectedTeam);
-    const selectedPokemon = currentTeam?.pokemons[selectedPokemonIndex];
+  // Save team
+  const saveTeam = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      
+      // Check if team exists, use update or create endpoint accordingly
+      const endpoint = team.length > 0 ? '/api/team/update' : '/api/team/create';
+      //const method = 'POST'; // Both use POST, but update uses PUT
+      
+      const response = await fetch(endpoint, {
+        method: team.length > 0 ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          teamName,
+          pokemon: team
+        })
+      });
 
-    const getCalculatedStats = (pokemon) => {
-        if (!pokemon || !pokemon.baseStats) return { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
-        
-        return {
-            hp: calculateStat(pokemon.baseStats.hp, pokemon.ivs.hp, pokemon.evs.hp, pokemon.level, pokemon.nature, 'hp'),
-            atk: calculateStat(pokemon.baseStats.atk, pokemon.ivs.atk, pokemon.evs.atk, pokemon.level, pokemon.nature, 'atk'),
-            def: calculateStat(pokemon.baseStats.def, pokemon.ivs.def, pokemon.evs.def, pokemon.level, pokemon.nature, 'def'),
-            spa: calculateStat(pokemon.baseStats.spa, pokemon.ivs.spa, pokemon.evs.spa, pokemon.level, pokemon.nature, 'spa'),
-            spd: calculateStat(pokemon.baseStats.spd, pokemon.ivs.spd, pokemon.evs.spd, pokemon.level, pokemon.nature, 'spd'),
-            spe: calculateStat(pokemon.baseStats.spe, pokemon.ivs.spe, pokemon.evs.spe, pokemon.level, pokemon.nature, 'spe')
-        };
-    };
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccessMessage('Team saved successfully!');
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } else {
+        setError(data.message || 'Failed to save team');
+        setTimeout(() => setError(null), 3000);
+      }
+      
+      setLoading(false);
+    } catch (err) {
+      setError('Error saving team: ' + err.message);
+      setTimeout(() => setError(null), 3000);
+      setLoading(false);
+    }
+  };
 
-    return (
-        <div className="team-builder-page">
-            <Link to="/dashboard" className="home-btn">← Home</Link>
+  // Clear team
+  const clearTeam = () => {
+    if (window.confirm('Are you sure you want to clear your entire team?')) {
+      setTeam([]);
+    }
+  };
 
-            <div className="team-builder-wrapper">
-                {/* Left Sidebar - Teams */}
-                <div className="teams-sidebar">
-                    <h2>Teams</h2>
-                    <button className="btn-create-team" onClick={() => setShowNewTeamModal(true)}>
-                        + New Team
+  if (loading && allPokemon.length === 0) {
+    return <div className="loading">Loading Team Builder...</div>;
+  }
+
+  return (
+    <div className="team-builder">
+      <header className="team-builder-header">
+        <h1>Team Builder</h1>
+        <input
+          type="text"
+          className="team-name-input"
+          value={teamName}
+          onChange={(e) => setTeamName(e.target.value)}
+          placeholder="Team Name"
+        />
+      </header>
+
+      {error && <div className="error-message">{error}</div>}
+      {successMessage && <div className="success-message">{successMessage}</div>}
+
+      <div className="team-builder-content">
+        {/* Current Team Display */}
+        <div className="team-section">
+          <div className="section-header">
+            <h2>Your Team ({team.length}/6)</h2>
+            <div className="team-actions">
+              <button onClick={saveTeam} className="btn-save" disabled={loading}>
+                Save Team
+              </button>
+              <button onClick={clearTeam} className="btn-clear">
+                Clear Team
+              </button>
+            </div>
+          </div>
+
+          <div className="team-slots">
+            {[...Array(6)].map((_, index) => (
+              <div key={index} className="team-slot">
+                {team[index] ? (
+                  <div className="team-member">
+                    <div className="pokemon-header">
+                      <h3>{team[index].name}</h3>
+                      <button
+                        onClick={() => removePokemon(index)}
+                        className="btn-remove"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    
+                    <div className="pokemon-types">
+                      {team[index].types.map((type, i) => (
+                        <span key={i} className={`type-badge type-${type.toLowerCase()}`}>
+                          {type}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="pokemon-stats">
+                      <div className="stat">HP: {team[index].baseStats.baseHP}</div>
+                      <div className="stat">Atk: {team[index].baseStats.baseAttack}</div>
+                      <div className="stat">Def: {team[index].baseStats.baseDefense}</div>
+                      <div className="stat">SpA: {team[index].baseStats.baseSpAttack}</div>
+                      <div className="stat">SpD: {team[index].baseStats.baseSpDefense}</div>
+                      <div className="stat">Spe: {team[index].baseStats.baseSpeed}</div>
+                    </div>
+
+                    <div className="pokemon-moves">
+                      <strong>Moves ({team[index].selectedMoves.length}/4):</strong>
+                      {team[index].selectedMoves.map((move, i) => (
+                        <div key={i} className="move-item">{move.name}</div>
+                      ))}
+                    </div>
+
+                    <div className="pokemon-ability">
+                      <strong>Ability:</strong>
+                      {team[index].selectedAbility ? (
+                        <div className="ability-item">{team[index].selectedAbility.name}</div>
+                      ) : (
+                        <div className="ability-item none">None selected</div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => openEditor(index)}
+                      className="btn-edit"
+                    >
+                      Edit Moves & Ability
                     </button>
-
-                    <div className="teams-list">
-                        {teams.length === 0 ? (
-                            <p className="no-teams">No teams yet. Create one!</p>
-                        ) : (
-                            teams.map(team => (
-                                <div
-                                    key={team.id}
-                                    className={`team-item ${selectedTeam === team.id ? 'active' : ''}`}
-                                >
-                                    <div
-                                        className="team-name"
-                                        onClick={() => setSelectedTeam(team.id)}
-                                    >
-                                        {team.name}
-                                    </div>
-                                    <button
-                                        className="btn-delete"
-                                        onClick={() => handleDeleteTeam(team.id)}
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-
-                {/* Main Content */}
-                {selectedTeam ? (
-                    <div className="team-editor">
-                        <h1>{currentTeam?.name}</h1>
-
-                        {/* Pokemon List */}
-                        <div className="pokemon-list">
-                            {currentTeam?.pokemons.map((pokemon, index) => {
-                                const stats = pokemon ? getCalculatedStats(pokemon) : null;
-                                return (
-                                    <div
-                                        key={index}
-                                        className={`pokemon-row ${
-                                            selectedPokemonIndex === index ? 'selected' : ''
-                                        } ${!pokemon ? 'empty' : ''}`}
-                                        onClick={() => handleSlotClick(index)}
-                                    >
-                                        {pokemon ? (
-                                            <>
-                                                <div className="pokemon-row-info">
-                                                    <span className="ou-label">OU</span>
-                                                    <span className="pokemon-name">{pokemon.nickname || pokemon.name}</span>
-                                                    {pokemon.gender && pokemon.gender !== 'N' && (
-                                                        <span className={`gender ${pokemon.gender === 'M' ? 'male' : 'female'}`}>
-                                                            {pokemon.gender === 'M' ? '♂' : '♀'}
-                                                        </span>
-                                                    )}
-                                                    {pokemon.ability && (
-                                                        <span className="ability">{pokemon.ability}</span>
-                                                    )}
-                                                    {pokemon.item && (
-                                                        <span className="item">{pokemon.item}</span>
-                                                    )}
-                                                </div>
-                                                <div className="pokemon-row-stats">
-                                                    <span>HP {stats?.hp || 0}</span>
-                                                    <span>Atk {stats?.atk || 0}</span>
-                                                    <span>Def {stats?.def || 0}</span>
-                                                    <span>SpA {stats?.spa || 0}</span>
-                                                    <span>SpD {stats?.spd || 0}</span>
-                                                    <span>Spe {stats?.spe || 0}</span>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <span className="empty-slot">Empty Slot - Click to Add Pokémon</span>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {/* Pokemon Details Editor */}
-                        {selectedPokemon ? (
-                            <PokemonDetails
-                                pokemon={selectedPokemon}
-                                onUpdate={handleUpdatePokemon}
-                                onRemove={() => handleRemovePokemon(selectedPokemonIndex)}
-                            />
-                        ) : (
-                            <div className="no-selection">
-                                <p>Select an empty slot above to add a Pokémon</p>
-                            </div>
-                        )}
-                    </div>
+                  </div>
                 ) : (
-                    <div className="no-team-selected">
-                        <p>Create or select a team to get started</p>
-                    </div>
+                  <div
+                    className="empty-slot"
+                    onClick={() => setSelectedSlot(index)}
+                  >
+                    <span className="plus-icon">+</span>
+                    <p>Add Pokemon</p>
+                  </div>
                 )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Pokemon Selection Panel */}
+        {selectedSlot !== null && (
+          <div className="selection-panel">
+            <div className="panel-header">
+              <h2>Select a Pokemon</h2>
+              <button
+                onClick={() => setSelectedSlot(null)}
+                className="btn-close"
+              >
+                ×
+              </button>
             </div>
 
-            {/* Modals */}
-            {showNewTeamModal && (
-                <div className="modal-overlay">
-                    <div className="modal">
-                        <h2>Create New Team</h2>
-                        <input
-                            type="text"
-                            value={newTeamName}
-                            onChange={(e) => setNewTeamName(e.target.value)}
-                            placeholder="Team name..."
-                            onKeyPress={(e) => e.key === 'Enter' && handleCreateTeam()}
-                            autoFocus
-                        />
-                        <div className="modal-buttons">
-                            <button className="btn-primary" onClick={handleCreateTeam}>
-                                Create
-                            </button>
-                            <button
-                                className="btn-secondary"
-                                onClick={() => setShowNewTeamModal(false)}
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search Pokemon..."
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+            />
 
-            {showPokemonSelector && (
-                <PokemonSelector
-                    onSelect={handleAddPokemon}
-                    onClose={() => setShowPokemonSelector(false)}
-                />
-            )}
-        </div>
-    );
-}
+            <div className="pokemon-grid">
+              {allPokemon.map((pokemon) => (
+                <div
+                  key={pokemon.pokemonId}
+                  className="pokemon-card"
+                  onClick={() => addPokemonToTeam(pokemon)}
+                >
+                  <h4>{pokemon.name}</h4>
+                  <div className="pokemon-types">
+                    {pokemon.types.map((type, i) => (
+                      <span key={i} className={`type-badge type-${type.toLowerCase()}`}>
+                        {type}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="pokemon-stats-mini">
+                    <span>HP: {pokemon.baseStats.baseHP}</span>
+                    <span>Atk: {pokemon.baseStats.baseAttack}</span>
+                    <span>Def: {pokemon.baseStats.baseDefense}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Move & Ability Editor */}
+        {editingPokemon !== null && (
+          <div className="editor-panel">
+            <div className="panel-header">
+              <h2>Edit {team[editingPokemon].name}</h2>
+              <button
+                onClick={() => setEditingPokemon(null)}
+                className="btn-close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="editor-content">
+              <div className="editor-section">
+                <h3>Select Moves (Max 4)</h3>
+                <div className="moves-grid">
+                  {allMoves.map((move) => {
+                    const isSelected = team[editingPokemon].selectedMoves.some(
+                      m => m.moveId === move.moveId
+                    );
+                    return (
+                      <div
+                        key={move.moveId}
+                        className={`move-card ${isSelected ? 'selected' : ''}`}
+                        onClick={() => toggleMove(move)}
+                      >
+                        <div className="move-name">{move.name}</div>
+                        <div className="move-details">
+                          <span className={`type-badge type-${move.type.toLowerCase()}`}>
+                            {move.type}
+                          </span>
+                          <span>Pow: {move.power || '-'}</span>
+                          <span>Acc: {move.accuracy || '-'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="editor-section">
+                <h3>Select Ability</h3>
+                <div className="abilities-list">
+                  {allAbilities.map((ability) => {
+                    const isSelected = team[editingPokemon].selectedAbility?.abilityId === ability.abilityId;
+                    return (
+                      <div
+                        key={ability.abilityId}
+                        className={`ability-card ${isSelected ? 'selected' : ''}`}
+                        onClick={() => selectAbility(ability)}
+                      >
+                        <div className="ability-name">{ability.name}</div>
+                        <div className="ability-description">{ability.description}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default TeamBuilder;

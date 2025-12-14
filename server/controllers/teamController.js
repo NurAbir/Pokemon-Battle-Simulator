@@ -1,158 +1,204 @@
 const Team = require('../models/Team');
-const TeamPokemon = require('../models/TeamPokemon');
-const Pokemon = require('../models/Pokemon');
 
-// @route   GET /api/team/my-team
+// Get user's team
 exports.getMyTeam = async (req, res) => {
   try {
-    // Find user's team
-    const team = await Team.findOne({ userId: req.user.userId });
+    const team = await Team.findOne({ userId: req.user._id });
     
     if (!team) {
-      return res.json({
-        success: true,
-        data: {
-          teamId: null,
-          name: 'No Team',
-          pokemon: []
-        }
+      return res.status(404).json({
+        success: false,
+        message: 'No team found for this user'
       });
     }
-
-    // Get all Pokemon in the team
-    const teamPokemon = await TeamPokemon.find({ teamId: team.teamId });
     
-    // Get Pokemon details for each team member
-    const pokemonDetails = await Promise.all(
-      teamPokemon.map(async (tp) => {
-        const pokemon = await Pokemon.findOne({ pokemonId: tp.pokemonId });
-        return {
-          teamPokemonId: tp.teamPokemonId,
-          level: tp.level,
-          nature: tp.nature,
-          currentHP: tp.currentHP,
-          pokemon: {
-            pokemonId: pokemon?.pokemonId,
-            name: pokemon?.name || 'Unknown',
-            type: pokemon?.type || [],
-            sprite: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemon?.pokemonId?.split('_')[1] || '1'}.png`
-          }
-        };
-      })
-    );
-
-    res.json({
+    res.status(200).json({
       success: true,
-      data: {
-        teamId: team.teamId,
-        name: team.name,
-        pokemon: pokemonDetails
-      }
+      data: team
     });
   } catch (error) {
-    console.error('Get team error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: error.message 
+      message: 'Error fetching team',
+      error: error.message
     });
   }
 };
 
-// @route   POST /api/team/create
+// Create new team
 exports.createTeam = async (req, res) => {
   try {
-    const { name, pokemonIds } = req.body;
+    const { teamName, pokemon } = req.body;
     
-    // Create team
-    const generateId = require('../utils/generateId');
-    const teamId = generateId('team');
-    
-    const team = await Team.create({
-      teamId,
-      userId: req.user.userId,
-      name: name || 'My Team'
-    });
-
-    // Add Pokemon to team if provided
-    if (pokemonIds && pokemonIds.length > 0) {
-      for (let i = 0; i < pokemonIds.length && i < 6; i++) {
-        const pokemon = await Pokemon.findOne({ pokemonId: pokemonIds[i] });
-        if (pokemon) {
-          await TeamPokemon.create({
-            teamPokemonId: generateId('teampoke'),
-            teamId: team.teamId,
-            pokemonId: pokemon.pokemonId,
-            level: 50,
-            nature: 'Hardy',
-            currentHP: pokemon.baseHP
-          });
-        }
-      }
-    }
-
-    res.status(201).json({
-      success: true,
-      data: team
-    });
-  } catch (error) {
-    console.error('Create team error:', error);
-    res.status(500).json({ 
-      success: false,
-      message: error.message 
-    });
-  }
-};
-
-// @route   PUT /api/team/update
-exports.updateTeam = async (req, res) => {
-  try {
-    const { teamId, name, pokemonIds } = req.body;
-    
-    const team = await Team.findOne({ teamId, userId: req.user.userId });
-    
-    if (!team) {
-      return res.status(404).json({ 
+    // Check if user already has a team
+    const existingTeam = await Team.findOne({ userId: req.user._id });
+    if (existingTeam) {
+      return res.status(400).json({
         success: false,
-        message: 'Team not found' 
+        message: 'You already have a team. Use update endpoint to modify it.'
       });
     }
-
-    if (name) {
-      team.name = name;
-      await team.save();
+    
+    // Validate pokemon array
+    if (!pokemon || !Array.isArray(pokemon)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pokemon array is required'
+      });
     }
-
-    if (pokemonIds) {
-      // Remove old Pokemon
-      await TeamPokemon.deleteMany({ teamId: team.teamId });
-      
-      // Add new Pokemon
-      const generateId = require('../utils/generateId');
-      for (let i = 0; i < pokemonIds.length && i < 6; i++) {
-        const pokemon = await Pokemon.findOne({ pokemonId: pokemonIds[i] });
-        if (pokemon) {
-          await TeamPokemon.create({
-            teamPokemonId: generateId('teampoke'),
-            teamId: team.teamId,
-            pokemonId: pokemon.pokemonId,
-            level: 50,
-            nature: 'Hardy',
-            currentHP: pokemon.baseHP
-          });
-        }
+    
+    if (pokemon.length > 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Team cannot have more than 6 Pokemon'
+      });
+    }
+    
+    // Validate each pokemon has max 4 moves
+    for (let p of pokemon) {
+      if (p.selectedMoves && p.selectedMoves.length > 4) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each Pokemon cannot have more than 4 moves'
+        });
       }
     }
-
-    res.json({
+    
+    // Create new team
+    const team = await Team.create({
+      userId: req.user._id,
+      teamName: teamName || 'My Team',
+      pokemon
+    });
+    
+    res.status(201).json({
       success: true,
+      message: 'Team created successfully',
       data: team
     });
   } catch (error) {
-    console.error('Update team error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: error.message 
+      message: 'Error creating team',
+      error: error.message
     });
   }
 };
 
+// Update existing team
+exports.updateTeam = async (req, res) => {
+  try {
+    const { teamName, pokemon } = req.body;
+    
+    // Find existing team
+    let team = await Team.findOne({ userId: req.user._id });
+    
+    if (!team) {
+      return res.status(404).json({
+        success: false,
+        message: 'No team found. Use create endpoint first.'
+      });
+    }
+    
+    // Validate pokemon array if provided
+    if (pokemon) {
+      if (!Array.isArray(pokemon)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Pokemon must be an array'
+        });
+      }
+      
+      if (pokemon.length > 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Team cannot have more than 6 Pokemon'
+        });
+      }
+      
+      // Validate each pokemon has max 4 moves
+      for (let p of pokemon) {
+        if (p.selectedMoves && p.selectedMoves.length > 4) {
+          return res.status(400).json({
+            success: false,
+            message: 'Each Pokemon cannot have more than 4 moves'
+          });
+        }
+      }
+      
+      team.pokemon = pokemon;
+    }
+    
+    if (teamName) {
+      team.teamName = teamName;
+    }
+    
+    await team.save();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Team updated successfully',
+      data: team
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating team',
+      error: error.message
+    });
+  }
+};
+
+// Delete user's team
+exports.deleteTeam = async (req, res) => {
+  try {
+    const team = await Team.findOneAndDelete({ userId: req.user._id });
+    
+    if (!team) {
+      return res.status(404).json({
+        success: false,
+        message: 'No team found to delete'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: 'Team deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting team',
+      error: error.message
+    });
+  }
+};
+
+// Clear team (remove all pokemon but keep team)
+exports.clearTeam = async (req, res) => {
+  try {
+    const team = await Team.findOne({ userId: req.user._id });
+    
+    if (!team) {
+      return res.status(404).json({
+        success: false,
+        message: 'No team found'
+      });
+    }
+    
+    team.pokemon = [];
+    await team.save();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Team cleared successfully',
+      data: team
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error clearing team',
+      error: error.message
+    });
+  }
+};

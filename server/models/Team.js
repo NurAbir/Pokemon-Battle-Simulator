@@ -1,55 +1,61 @@
 const mongoose = require('mongoose');
 
-const teamSchema = new mongoose.Schema({
-  teamId: {
+const teamMemberSchema = new mongoose.Schema({
+  pokemonId: {
     type: String,
-    required: true,
-    unique: true
-  },
-  userId: {
-    type: String,
-    required: true,
-    ref: 'User'
+    required: true
   },
   name: {
     type: String,
     required: true
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  types: [{
+    type: String
+  }],
+  baseStats: {
+    baseHP: Number,
+    baseAttack: Number,
+    baseDefense: Number,
+    baseSpAttack: Number,
+    baseSpDefense: Number,
+    baseSpeed: Number
   },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+  selectedMoves: [{
+    moveId: String,
+    name: String,
+    type: String,
+    power: Number,
+    accuracy: Number
+  }],
+  selectedAbility: {
+    abilityId: String,
+    name: String,
+    description: String
   }
-}, { timestamps: true });
+});
 
-// Create team
-teamSchema.statics.createTeam = async function(userId, name) {
-  const team = new this({
-    teamId: `team_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    userId,
-    name
-  });
-  await team.save();
-  return team;
-};
+const teamSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    unique: true // One team per user
+  },
+  teamName: {
+    type: String,
+    default: 'My Team'
+  },
+  pokemon: [teamMemberSchema]
+}, {
+  timestamps: true
+});
 
-// Edit team
-teamSchema.methods.editTeam = async function(newName) {
-  this.name = newName;
-  this.updatedAt = new Date();
-  await this.save();
-};
-
-// Validate equality (check if team is valid)
-teamSchema.methods.validateEquality = async function() {
-  const TeamPokemon = mongoose.model('TeamPokemon');
-  const pokemons = await TeamPokemon.find({ teamId: this.teamId });
-  
-  // Must have exactly 6 Pokémon
-  return pokemons.length === 6;
-};
+// Validate team has max 6 pokemon
+teamSchema.pre('save', function(next) {
+  if (this.pokemon.length > 6) {
+    next(new Error('Team cannot have more than 6 Pokemon'));
+  }
+  next();
+});
 
 module.exports = mongoose.model('Team', teamSchema);
