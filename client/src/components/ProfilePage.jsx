@@ -148,7 +148,7 @@ const ProfilePage = () => {
       <header className="profile-header">
         <div className="header-spacer"></div>
         <nav className="header-nav">
-          <button className="nav-btn home-btn" onClick={() => navigate('/')}>Home</button>
+          <button className="nav-btn home-btn" onClick={() => navigate('/dashboard')}>Home</button>
           <button className="nav-btn logout-btn" onClick={handleLogout}>Logout</button>
         </nav>
       </header>

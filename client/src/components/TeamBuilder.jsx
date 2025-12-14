@@ -136,7 +136,7 @@ export default function TeamBuilder() {
 
     return (
         <div className="team-builder-page">
-            <Link to="/" className="home-btn">← Home</Link>
+            <Link to="/dashboard" className="home-btn">← Home</Link>
 
             <div className="team-builder-wrapper">
                 {/* Left Sidebar - Teams */}
