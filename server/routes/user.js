@@ -18,4 +18,5 @@ router.get('/stats', protect, getStats);  // Changed from /statistics
 router.get('/statistics', protect, getStats);  // Keep for compatibility
 router.get('/history', protect, getBattleHistory);
 
+
 module.exports = router;
