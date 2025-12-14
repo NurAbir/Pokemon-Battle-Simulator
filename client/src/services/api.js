@@ -23,6 +23,15 @@ export const forgotPassword = (data) => API.post('/auth/forgot-password', data);
 export const verifyCode = (data) => API.post('/auth/verify-code', data);
 export const resetPassword = (data) => API.post('/auth/reset-password', data);
 
+// Pokemon endpoints
+export const searchPokemon = (searchTerm = '') => API.get(`/pokemon?search=${searchTerm}`);
+export const getPokemonById = (id) => API.get(`/pokemon/${id}`);
+
+// Move, Ability, Item endpoints
+export const getMoves = () => API.get('/moves');
+export const getAbilities = () => API.get('/abilities');
+export const getItems = () => API.get('/items');
+
 // Team endpoints
 export const getMyTeam = () => API.get('/team/my-team');
 export const createTeam = (data) => API.post('/team/create', data);

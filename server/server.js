@@ -27,11 +27,20 @@ app.set('views', path.join(__dirname, '../views'));
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const teamRoutes = require('./routes/team');
+const pokemonRoutes = require('./routes/pokemon');
+const moveRoutes = require('./routes/moves');
+const abilityRoutes = require('./routes/abilities');
+const itemRoutes = require('./routes/items');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/team', teamRoutes);
+app.use('/api/pokemon', pokemonRoutes);
+app.use('/api/moves', moveRoutes);
+app.use('/api/abilities', abilityRoutes);
+app.use('/api/items', itemRoutes);
+
 
 // Health check
 app.get('/api/health', (req, res) => {
