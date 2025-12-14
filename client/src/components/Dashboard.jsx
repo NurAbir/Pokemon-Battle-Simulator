@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import socketService from '../services/socket';
+import NotificationBoard from './NotificationBoard';
+import ChatBox from './ChatBox';
+import API from '../services/api';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [selectedMode, setSelectedMode] = useState('normal');
   const [user, setUser] = useState(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Placeholder leaderboard data
   const leaderboard = [
@@ -34,10 +41,37 @@ const Dashboard = () => {
       }
     };
 
+    // Fetch unread notification count
+    const fetchUnreadCount = async () => {
+      try {
+        const response = await API.get('/notifications/unread-count');
+        if (response.data.success) {
+          setUnreadCount(response.data.data.count);
+        }
+      } catch (error) {
+        console.error('Error fetching unread count:', error);
+      }
+    };
+
     fetchUserProfile();
+    fetchUnreadCount();
+
+    // Connect to socket
+    socketService.connect();
+
+    // Listen for new notifications
+    const handleNewNotification = () => {
+      setUnreadCount(prev => prev + 1);
+    };
+    socketService.on('notification:new', handleNewNotification);
+
+    return () => {
+      socketService.off('notification:new', handleNewNotification);
+    };
   }, []);
 
   const handleLogout = () => {
+    socketService.disconnect();
     localStorage.removeItem('token');
     navigate('/login');
   };
@@ -61,6 +95,13 @@ const Dashboard = () => {
       <div style={styles.header}>
         <h1 style={styles.title}>Pokémon Battle Simulator</h1>
         <div style={styles.headerButtons}>
+          <button 
+            style={styles.notificationButton}
+            onClick={() => setShowNotifications(true)}
+          >
+            🔔
+            {unreadCount > 0 && <span style={styles.notificationBadge}>{unreadCount}</span>}
+          </button>
           <button 
             style={styles.headerButton}
             onClick={handleProfile}
@@ -168,6 +209,29 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Chat Toggle Button */}
+      <button 
+        style={styles.chatToggle}
+        onClick={() => setShowChat(!showChat)}
+      >
+        💬
+      </button>
+
+      {/* Notification Board */}
+      <NotificationBoard 
+        isOpen={showNotifications} 
+        onClose={() => {
+          setShowNotifications(false);
+          setUnreadCount(0);
+        }} 
+      />
+
+      {/* Chat Box */}
+      <ChatBox 
+        isOpen={showChat} 
+        onClose={() => setShowChat(false)} 
+      />
     </div>
   );
 };
@@ -211,6 +275,47 @@ const styles = {
   },
   logoutButton: {
     background: 'rgba(239, 68, 68, 0.8)',
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: '10px 15px',
+    border: 'none',
+    borderRadius: '50%',
+    background: 'rgba(255, 255, 255, 0.2)',
+    color: '#ffffff',
+    fontSize: '18px',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: '-5px',
+    right: '-5px',
+    background: '#ff4757',
+    color: 'white',
+    width: '20px',
+    height: '20px',
+    borderRadius: '50%',
+    fontSize: '11px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatToggle: {
+    position: 'fixed',
+    bottom: '20px',
+    right: '20px',
+    width: '60px',
+    height: '60px',
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    border: 'none',
+    color: 'white',
+    fontSize: '24px',
+    cursor: 'pointer',
+    boxShadow: '0 4px 20px rgba(102, 126, 234, 0.4)',
+    zIndex: '999',
+    transition: 'transform 0.2s',
   },
   mainContent: {
     maxWidth: '1200px',

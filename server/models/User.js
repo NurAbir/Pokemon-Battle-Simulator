@@ -39,9 +39,19 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 1000
   },
+  // Friends list
+  friends: [{
+    type: String,
+    ref: 'User'
+  }],
   isOnline: {
     type: Boolean,
     default: false
+  },
+  // Socket ID for real-time communication
+  socketId: {
+    type: String,
+    default: null
   },
   isBanned: {
     type: Boolean,
