@@ -51,6 +51,7 @@ const teamRoutes = require('./routes/team');
 const notificationRoutes = require('./routes/notification');
 const chatRoutes = require('./routes/chat');
 const battleLogRoutes = require('./routes/battleLog');
+const healthRoutes = require('./routes/health');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
@@ -59,11 +60,7 @@ app.use('/api/team', teamRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/battle-log', battleLogRoutes);
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
-});
+app.use('/api/health', healthRoutes);
 
 // 404 handler
 app.use((req, res) => {
