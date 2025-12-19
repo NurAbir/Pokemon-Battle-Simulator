@@ -1,158 +1,141 @@
+// controllers/teamController.js
 const Team = require('../models/Team');
-const TeamPokemon = require('../models/TeamPokemon');
-const Pokemon = require('../models/Pokemon');
 
-// @route   GET /api/team/my-team
-exports.getMyTeam = async (req, res) => {
-  try {
-    // Find user's team
-    const team = await Team.findOne({ userId: req.user.userId });
-    
-    if (!team) {
-      return res.json({
-        success: true,
-        data: {
-          teamId: null,
-          name: 'No Team',
-          pokemon: []
-        }
-      });
-    }
-
-    // Get all Pokemon in the team
-    const teamPokemon = await TeamPokemon.find({ teamId: team.teamId });
-    
-    // Get Pokemon details for each team member
-    const pokemonDetails = await Promise.all(
-      teamPokemon.map(async (tp) => {
-        const pokemon = await Pokemon.findOne({ pokemonId: tp.pokemonId });
-        return {
-          teamPokemonId: tp.teamPokemonId,
-          level: tp.level,
-          nature: tp.nature,
-          currentHP: tp.currentHP,
-          pokemon: {
-            pokemonId: pokemon?.pokemonId,
-            name: pokemon?.name || 'Unknown',
-            type: pokemon?.type || [],
-            sprite: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemon?.pokemonId?.split('_')[1] || '1'}.png`
-          }
+// Calculate final stats
+const calculateStat = (base, iv, ev, level, nature, stat, natureName) => {
+    if (stat === 'hp') {
+        return Math.floor(((2 * base + iv + Math.floor(ev / 4)) * level) / 100) + level + 10;
+    } else {
+        let baseStat = Math.floor(((2 * base + iv + Math.floor(ev / 4)) * level) / 100) + 5;
+        
+        // Nature multipliers
+        const natures = {
+            'Lonely': { increased: 'atk', decreased: 'def' },
+            'Brave': { increased: 'atk', decreased: 'spe' },
+            'Adamant': { increased: 'atk', decreased: 'spa' },
+            'Naughty': { increased: 'atk', decreased: 'spd' },
+            'Bold': { increased: 'def', decreased: 'atk' },
+            'Relaxed': { increased: 'def', decreased: 'spe' },
+            'Impish': { increased: 'def', decreased: 'spa' },
+            'Lax': { increased: 'def', decreased: 'spd' },
+            'Timid': { increased: 'spe', decreased: 'atk' },
+            'Hasty': { increased: 'spe', decreased: 'def' },
+            'Jolly': { increased: 'spe', decreased: 'spa' },
+            'Naive': { increased: 'spe', decreased: 'spd' },
+            'Modest': { increased: 'spa', decreased: 'atk' },
+            'Mild': { increased: 'spa', decreased: 'def' },
+            'Quiet': { increased: 'spa', decreased: 'spe' },
+            'Rash': { increased: 'spa', decreased: 'spd' },
+            'Calm': { increased: 'spd', decreased: 'atk' },
+            'Gentle': { increased: 'spd', decreased: 'def' },
+            'Sassy': { increased: 'spd', decreased: 'spe' },
+            'Careful': { increased: 'spd', decreased: 'spa' }
         };
-      })
-    );
 
-    res.json({
-      success: true,
-      data: {
-        teamId: team.teamId,
-        name: team.name,
-        pokemon: pokemonDetails
-      }
-    });
-  } catch (error) {
-    console.error('Get team error:', error);
-    res.status(500).json({ 
-      success: false,
-      message: error.message 
-    });
-  }
+        const natureEffect = natures[natureName];
+        if (natureEffect) {
+            if (natureEffect.increased === stat) {
+                baseStat = Math.floor(baseStat * 1.1);
+            } else if (natureEffect.decreased === stat) {
+                baseStat = Math.floor(baseStat * 0.9);
+            }
+        }
+        
+        return baseStat;
+    }
 };
 
-// @route   POST /api/team/create
+const calculateAllStats = (pokemon) => {
+    return {
+        hp: calculateStat(pokemon.baseStats.hp, pokemon.ivs.hp, pokemon.evs.hp, pokemon.level, 'hp', pokemon.nature),
+        atk: calculateStat(pokemon.baseStats.atk, pokemon.ivs.atk, pokemon.evs.atk, pokemon.level, 'atk', pokemon.nature),
+        def: calculateStat(pokemon.baseStats.def, pokemon.ivs.def, pokemon.evs.def, pokemon.level, 'def', pokemon.nature),
+        spa: calculateStat(pokemon.baseStats.spa, pokemon.ivs.spa, pokemon.evs.spa, pokemon.level, 'spa', pokemon.nature),
+        spd: calculateStat(pokemon.baseStats.spd, pokemon.ivs.spd, pokemon.evs.spd, pokemon.level, 'spd', pokemon.nature),
+        spe: calculateStat(pokemon.baseStats.spe, pokemon.ivs.spe, pokemon.evs.spe, pokemon.level, 'spe', pokemon.nature)
+    };
+};
+
+// Get all teams for a user
+exports.getTeams = async (req, res) => {
+    try {
+        const teams = await Team.find({ userId: req.user.id }).sort({ createdAt: -1 });
+        res.json(teams);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Create new team
 exports.createTeam = async (req, res) => {
-  try {
-    const { name, pokemonIds } = req.body;
-    
-    // Create team
-    const generateId = require('../utils/generateId');
-    const teamId = generateId('team');
-    
-    const team = await Team.create({
-      teamId,
-      userId: req.user.userId,
-      name: name || 'My Team'
-    });
+    try {
+        const team = new Team({
+            name: req.body.name,
+            userId: req.user.id,
+            pokemons: Array(6).fill(null)
+        });
 
-    // Add Pokemon to team if provided
-    if (pokemonIds && pokemonIds.length > 0) {
-      for (let i = 0; i < pokemonIds.length && i < 6; i++) {
-        const pokemon = await Pokemon.findOne({ pokemonId: pokemonIds[i] });
-        if (pokemon) {
-          await TeamPokemon.create({
-            teamPokemonId: generateId('teampoke'),
-            teamId: team.teamId,
-            pokemonId: pokemon.pokemonId,
-            level: 50,
-            nature: 'Hardy',
-            currentHP: pokemon.baseHP
-          });
-        }
-      }
+        const newTeam = await team.save();
+        res.status(201).json(newTeam);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
     }
-
-    res.status(201).json({
-      success: true,
-      data: team
-    });
-  } catch (error) {
-    console.error('Create team error:', error);
-    res.status(500).json({ 
-      success: false,
-      message: error.message 
-    });
-  }
 };
 
-// @route   PUT /api/team/update
+// Update team
 exports.updateTeam = async (req, res) => {
-  try {
-    const { teamId, name, pokemonIds } = req.body;
-    
-    const team = await Team.findOne({ teamId, userId: req.user.userId });
-    
-    if (!team) {
-      return res.status(404).json({ 
-        success: false,
-        message: 'Team not found' 
-      });
-    }
-
-    if (name) {
-      team.name = name;
-      await team.save();
-    }
-
-    if (pokemonIds) {
-      // Remove old Pokemon
-      await TeamPokemon.deleteMany({ teamId: team.teamId });
-      
-      // Add new Pokemon
-      const generateId = require('../utils/generateId');
-      for (let i = 0; i < pokemonIds.length && i < 6; i++) {
-        const pokemon = await Pokemon.findOne({ pokemonId: pokemonIds[i] });
-        if (pokemon) {
-          await TeamPokemon.create({
-            teamPokemonId: generateId('teampoke'),
-            teamId: team.teamId,
-            pokemonId: pokemon.pokemonId,
-            level: 50,
-            nature: 'Hardy',
-            currentHP: pokemon.baseHP
-          });
+    try {
+        const team = await Team.findOne({ _id: req.params.id, userId: req.user.id });
+        
+        if (!team) {
+            return res.status(404).json({ message: 'Team not found' });
         }
-      }
-    }
 
-    res.json({
-      success: true,
-      data: team
-    });
-  } catch (error) {
-    console.error('Update team error:', error);
-    res.status(500).json({ 
-      success: false,
-      message: error.message 
-    });
-  }
+        if (req.body.name) team.name = req.body.name;
+        
+        if (req.body.pokemons) {
+            // Calculate stats for each pokemon
+            team.pokemons = req.body.pokemons.map(pokemon => {
+                if (pokemon && pokemon.baseStats) {
+                    pokemon.calculatedStats = calculateAllStats(pokemon);
+                }
+                return pokemon;
+            });
+        }
+
+        const updatedTeam = await team.save();
+        res.json(updatedTeam);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
 };
 
+// Delete team
+exports.deleteTeam = async (req, res) => {
+    try {
+        const team = await Team.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+        
+        if (!team) {
+            return res.status(404).json({ message: 'Team not found' });
+        }
+
+        res.json({ message: 'Team deleted' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Get single team
+exports.getTeam = async (req, res) => {
+    try {
+        const team = await Team.findOne({ _id: req.params.id, userId: req.user.id });
+        
+        if (!team) {
+            return res.status(404).json({ message: 'Team not found' });
+        }
+
+        res.json(team);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};

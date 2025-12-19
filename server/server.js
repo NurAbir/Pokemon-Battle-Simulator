@@ -31,7 +31,7 @@ const teamRoutes = require('./routes/team');
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
-app.use('/api/team', teamRoutes);
+app.use('/api/teams', teamRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
