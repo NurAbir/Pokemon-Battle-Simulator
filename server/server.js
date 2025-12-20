@@ -1,8 +1,12 @@
+// server.js
 const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
 const connectDB = require('./config/database');
+const battleHandler = require('./sockets/battleHandler');
 
 // Load env vars
 dotenv.config();
@@ -12,6 +16,16 @@ connectDB();
 
 // Initialize app
 const app = express();
+const server = http.createServer(app);
+
+// Socket.IO setup with CORS
+const io = socketIo(server, {
+  cors: {
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
 
 // Middleware
 app.use(cors());
@@ -27,11 +41,16 @@ app.set('views', path.join(__dirname, '../views'));
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const teamRoutes = require('./routes/team');
+const battleRoutes = require('./routes/battleRoutes');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/teams', teamRoutes);
+app.use('/api/battles', battleRoutes);
+
+// Initialize battle handler
+battleHandler(io);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -51,7 +70,10 @@ app.use((err, req, res, next) => {
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Socket.IO server ready for connections`);
 });
+
+module.exports = { io }; 

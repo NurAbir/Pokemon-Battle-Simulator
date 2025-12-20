@@ -1,5 +1,6 @@
 // controllers/teamController.js
 const Team = require('../models/Team');
+const mongoose = require('mongoose'); // ADD THIS LINE
 
 // Calculate final stats
 const calculateStat = (base, iv, ev, level, nature, stat, natureName) => {
@@ -71,6 +72,7 @@ exports.createTeam = async (req, res) => {
     try {
         const team = new Team({
             name: req.body.name,
+            teamId: new mongoose.Types.ObjectId(), // ADD THIS LINE - Generates unique teamId
             userId: req.user.id,
             pokemons: Array(6).fill(null)
         });

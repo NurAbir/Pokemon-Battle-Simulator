@@ -7,7 +7,8 @@ import VerifyCode from './components/VerifyCode';
 import ResetPassword from './components/ResetPassword';
 import TeamBuilder from './components/TeamBuilder';
 import ProfilePage from './components/ProfilePage';
-import Dashboard from './components/Dashboard'
+import Dashboard from './components/Dashboard';
+import Battle from './components/Battle';
 
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
       <Route path="/verify-code" element={<VerifyCode />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/team-builder" element={<TeamBuilder />} />
+      <Route path="/battle" element={<Battle />} />
     </Routes>
   );
 }

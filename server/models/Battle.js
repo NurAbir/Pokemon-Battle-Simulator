@@ -1,4 +1,53 @@
+// models/Battle.js
 const mongoose = require('mongoose');
+
+const battlePokemonSchema = new mongoose.Schema({
+  pokemonId: String,
+  name: String,
+  nickname: String,
+  level: Number,
+  types: [String],
+  currentHp: Number,
+  maxHp: Number,
+  stats: {
+    atk: Number,
+    def: Number,
+    spa: Number,
+    spd: Number,
+    spe: Number
+  },
+  moves: [String],
+  statusCondition: {
+    type: String,
+    enum: ['burn', 'paralysis', 'poison', 'sleep', 'freeze', null],
+    default: null
+  },
+  statStages: {
+    atk: { type: Number, default: 0, min: -6, max: 6 },
+    def: { type: Number, default: 0, min: -6, max: 6 },
+    spa: { type: Number, default: 0, min: -6, max: 6 },
+    spd: { type: Number, default: 0, min: -6, max: 6 },
+    spe: { type: Number, default: 0, min: -6, max: 6 },
+    accuracy: { type: Number, default: 0, min: -6, max: 6 },
+    evasion: { type: Number, default: 0, min: -6, max: 6 }
+  },
+  fainted: { type: Boolean, default: false }
+});
+
+const playerSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  username: String,
+  team: [battlePokemonSchema],
+  activePokemonIndex: { type: Number, default: 0 },
+  selectedMove: String,
+  selectedTarget: Number,
+  switchTo: Number,
+  ready: { type: Boolean, default: false }
+});
 
 const battleSchema = new mongoose.Schema({
   battleId: {
@@ -6,75 +55,52 @@ const battleSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
-  player1Id: {
+  players: [playerSchema],
+  status: {
     type: String,
-    required: true,
-    ref: 'User'
-  },
-  player2Id: {
-    type: String,
-    required: true,
-    ref: 'User'
-  },
-  battleStatus: {
-    type: String,
-    required: true,
-    enum: ['waiting', 'in_progress', 'completed', 'forfeited'],
+    enum: ['waiting', 'active', 'completed'],
     default: 'waiting'
   },
-  startTime: {
-    type: Date,
-    default: Date.now
-  },
-  endTime: {
-    type: Date,
-    default: null
-  },
-  winnerId: {
-    type: String,
-    default: null,
+  turn: { type: Number, default: 1 },
+  winner: {
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+  battleLog: [{
+    turn: Number,
+    message: String,
+    timestamp: { type: Date, default: Date.now }
+  }],
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Add log entry
+battleSchema.methods.addLog = function(message) {
+  this.battleLog.push({
+    turn: this.turn,
+    message: message,
+    timestamp: new Date()
+  });
+};
+
+// Get active Pokemon for a player
+battleSchema.methods.getActivePokemon = function(playerIndex) {
+  const player = this.players[playerIndex];
+  return player.team[player.activePokemonIndex];
+};
+
+// Check if battle is over
+battleSchema.methods.checkBattleEnd = function() {
+  for (let i = 0; i < this.players.length; i++) {
+    const allFainted = this.players[i].team.every(p => p.fainted);
+    if (allFainted) {
+      this.status = 'completed';
+      this.winner = this.players[1 - i].userId;
+      return true;
+    }
   }
-}, { timestamps: true });
-
-// Start battle
-battleSchema.methods.startBattle = async function() {
-  this.battleStatus = 'in_progress';
-  this.startTime = new Date();
-  await this.save();
-};
-
-// Execute turn
-battleSchema.methods.executeTurn = async function(playerId, moveId) {
-  // Battle logic here
-  console.log(`Player ${playerId} used move ${moveId}`);
-};
-
-// End battle
-battleSchema.methods.endBattle = async function(winnerId) {
-  this.battleStatus = 'completed';
-  this.endTime = new Date();
-  this.winnerId = winnerId;
-  await this.save();
-  
-  // Update statistics for both players
-  const Statistics = mongoose.model('Statistics');
-  await Statistics.findOneAndUpdate(
-    { userId: this.player1Id },
-    { $inc: { totalBattles: 1 } }
-  );
-  await Statistics.findOneAndUpdate(
-    { userId: this.player2Id },
-    { $inc: { totalBattles: 1 } }
-  );
-};
-
-// Forfeit
-battleSchema.methods.forfeit = async function(playerId) {
-  this.battleStatus = 'forfeited';
-  this.endTime = new Date();
-  this.winnerId = playerId === this.player1Id ? this.player2Id : this.player1Id;
-  await this.save();
+  return false;
 };
 
 module.exports = mongoose.model('Battle', battleSchema);
