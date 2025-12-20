@@ -13,12 +13,25 @@ module.exports = (io) => {
     console.log('User connected:', socket.id);
     
     // Join matchmaking
-    socket.on('joinMatchmaking', async ({ userId, teamId }) => {
+    socket.on('joinMatchmaking', async ({ userId, teamId, username }) => {
       try {
-        // Get user's team
+        // Validate inputs
+        if (!userId || !teamId) {
+          socket.emit('error', { message: 'Missing userId or teamId' });
+          return;
+        }
+
+        // Get user's team from database using teamId and userId
         const team = await Team.findOne({ _id: teamId, userId });
-        if (!team || team.pokemons.length === 0) {
-          socket.emit('error', { message: 'Invalid team' });
+        
+        if (!team) {
+          socket.emit('error', { message: 'Team not found' });
+          console.error('Team lookup failed:', { teamId, userId });
+          return;
+        }
+
+        if (!team.pokemons || team.pokemons.length === 0) {
+          socket.emit('error', { message: 'Team has no Pokemon' });
           return;
         }
         
@@ -27,10 +40,11 @@ module.exports = (io) => {
           userId,
           socketId: socket.id,
           team: team.pokemons,
-          username: socket.handshake.auth.username || 'Player'
+          username: username || 'Player'
         };
         
         matchmakingQueue.push(player);
+        console.log(`Player ${username} joined matchmaking. Queue size: ${matchmakingQueue.length}`);
         socket.emit('matchmakingJoined');
         
         // Try to match
@@ -38,16 +52,25 @@ module.exports = (io) => {
           const player1 = matchmakingQueue.shift();
           const player2 = matchmakingQueue.shift();
           
-          // Create battle
-          const battleId = generateId('battle');
-          const battle = await BattleEngine.createBattle(player1, player2, battleId);
-          
-          // Create room
-          const room = `battle_${battleId}`;
+          // Verify both sockets still exist
           const socket1 = io.sockets.sockets.get(player1.socketId);
           const socket2 = io.sockets.sockets.get(player2.socketId);
           
-          if (socket1 && socket2) {
+          if (!socket1 || !socket2) {
+            console.error('One or both sockets no longer exist');
+            // Put players back in queue if sockets are gone
+            if (socket1) matchmakingQueue.unshift(player1);
+            if (socket2) matchmakingQueue.unshift(player2);
+            return;
+          }
+          
+          try {
+            // Create battle
+            const battleId = generateId('battle');
+            const battle = await BattleEngine.createBattle(player1, player2, battleId);
+            
+            // Create room
+            const room = `battle_${battleId}`;
             socket1.join(room);
             socket2.join(room);
             
@@ -56,17 +79,26 @@ module.exports = (io) => {
               players: [player1.userId, player2.userId]
             });
             
+            console.log(`Battle created: ${battleId} between ${player1.username} and ${player2.username}`);
+            
             // Send initial battle state
             const state1 = BattleEngine.getBattleState(battle, player1.userId);
             const state2 = BattleEngine.getBattleState(battle, player2.userId);
             
             socket1.emit('battleStart', state1);
             socket2.emit('battleStart', state2);
+          } catch (battleError) {
+            console.error('Battle creation error:', battleError);
+            // Put players back in queue if battle creation fails
+            matchmakingQueue.unshift(player1);
+            matchmakingQueue.unshift(player2);
+            socket1.emit('error', { message: 'Failed to create battle' });
+            socket2.emit('error', { message: 'Failed to create battle' });
           }
         }
       } catch (error) {
         console.error('Matchmaking error:', error);
-        socket.emit('error', { message: 'Matchmaking failed' });
+        socket.emit('error', { message: 'Matchmaking failed: ' + error.message });
       }
     });
     

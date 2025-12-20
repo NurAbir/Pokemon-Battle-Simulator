@@ -61,7 +61,11 @@ const Battle = () => {
   }, [userId, username, token]);
 
   const handleJoinMatchmaking = () => {
-    socketService.joinMatchmaking(userId, teamId);
+    if (!userId || !teamId) {
+      alert('Please select a team first');
+      return;
+    }
+    socketService.joinMatchmaking(userId, teamId, username);
   };
 
   const handleLeaveMatchmaking = () => {

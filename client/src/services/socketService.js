@@ -43,8 +43,8 @@ class SocketService {
   }
 
   // Matchmaking
-  joinMatchmaking(userId, teamId) {
-    this.socket.emit('joinMatchmaking', { userId, teamId });
+  joinMatchmaking(userId, teamId, username) {
+    this.socket.emit('joinMatchmaking', { userId, teamId, username });
   }
 
   leaveMatchmaking(userId) {
