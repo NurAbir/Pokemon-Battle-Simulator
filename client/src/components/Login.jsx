@@ -22,6 +22,8 @@ export default function Login() {
         try {
             const response = await login(formData);
             localStorage.setItem('token', response.data.token);
+            localStorage.setItem('userId', response.data.userId);      // ADD THIS
+            localStorage.setItem('username', response.data.username);
             navigate('/dashboard');
         } catch (err) {
             setError(err.response?.data?.error || 'Login failed');

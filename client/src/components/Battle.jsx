@@ -3,7 +3,12 @@ import React, { useState, useEffect } from 'react';
 import socketService from '../services/socketService';
 import '../styles/battle.css';
 
-const Battle = ({ userId, teamId, username, token }) => {
+const Battle = () => {
+  const userId = localStorage.getItem('userId');
+  const teamId = localStorage.getItem('selectedTeamId');
+  const username = localStorage.getItem('username');
+  const token = localStorage.getItem('token');
+  
   const [battleState, setBattleState] = useState(null);
   const [searching, setSearching] = useState(false);
   const [selectedMove, setSelectedMove] = useState(null);
@@ -122,7 +127,7 @@ const Battle = ({ userId, teamId, username, token }) => {
         <div className="matchmaking">
           <h1>Battle Arena</h1>
           <button onClick={handleJoinMatchmaking} className="btn-primary">
-            Find Battle
+            Find Battle?
           </button>
         </div>
       </div>

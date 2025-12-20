@@ -133,6 +133,7 @@ export default function TeamBuilder() {
             setSaveStatus('saving');
             const currentTeam = teams.find(t => t._id === selectedTeam);
             await saveTeamToDatabase(currentTeam);
+            localStorage.setItem('selectedTeamId', selectedTeam);
             setSaveStatus('saved');
             setTimeout(() => setSaveStatus(''), 2000);
         } catch (error) {
