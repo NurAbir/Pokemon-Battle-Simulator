@@ -14,6 +14,71 @@ const Battle = () => {
   const [selectedMove, setSelectedMove] = useState(null);
   const [showSwitchMenu, setShowSwitchMenu] = useState(false);
   const [battleLog, setBattleLog] = useState([]);
+  const [spriteErrors, setSpriteErrors] = useState({ player: false, opponent: false });
+
+  // Helper function to get Pokemon ID from name
+  const getPokemonId = (pokemon) => {
+    // If pokemonId exists, use it
+    if (pokemon.pokemonId) return pokemon.pokemonId;
+    
+    // Map of Pokemon names to their Pokedex numbers
+    const pokemonNameToId = {
+      'bulbasaur': 1, 'ivysaur': 2, 'venusaur': 3,
+      'charmander': 4, 'charmeleon': 5, 'charizard': 6,
+      'squirtle': 7, 'wartortle': 8, 'blastoise': 9,
+      'caterpie': 10, 'metapod': 11, 'butterfree': 12,
+      'weedle': 13, 'kakuna': 14, 'beedrill': 15,
+      'pidgey': 16, 'pidgeotto': 17, 'pidgeot': 18,
+      'rattata': 19, 'raticate': 20, 'spearow': 21,
+      'fearow': 22, 'ekans': 23, 'arbok': 24,
+      'pikachu': 25, 'raichu': 26, 'sandshrew': 27,
+      'sandslash': 28, 'nidoran-f': 29, 'nidorina': 30,
+      'nidoqueen': 31, 'nidoran-m': 32, 'nidorino': 33,
+      'nidoking': 34, 'clefairy': 35, 'clefable': 36,
+      'vulpix': 37, 'ninetales': 38, 'jigglypuff': 39,
+      'wigglytuff': 40, 'zubat': 41, 'golbat': 42,
+      'oddish': 43, 'gloom': 44, 'vileplume': 45,
+      'paras': 46, 'parasect': 47, 'venonat': 48,
+      'venomoth': 49, 'diglett': 50, 'dugtrio': 51,
+      'meowth': 52, 'persian': 53, 'psyduck': 54,
+      'golduck': 55, 'mankey': 56, 'primeape': 57,
+      'growlithe': 58, 'arcanine': 59, 'poliwag': 60,
+      'poliwhirl': 61, 'poliwrath': 62, 'abra': 63,
+      'kadabra': 64, 'alakazam': 65, 'machop': 66,
+      'machoke': 67, 'machamp': 68, 'bellsprout': 69,
+      'weepinbell': 70, 'victreebel': 71, 'tentacool': 72,
+      'tentacruel': 73, 'geodude': 74, 'graveler': 75,
+      'golem': 76, 'ponyta': 77, 'rapidash': 78,
+      'slowpoke': 79, 'slowbro': 80, 'magnemite': 81,
+      'magneton': 82, 'farfetchd': 83, 'doduo': 84,
+      'dodrio': 85, 'seel': 86, 'dewgong': 87,
+      'grimer': 88, 'muk': 89, 'shellder': 90,
+      'cloyster': 91, 'gastly': 92, 'haunter': 93,
+      'gengar': 94, 'onix': 95, 'drowzee': 96,
+      'hypno': 97, 'krabby': 98, 'kingler': 99,
+      'voltorb': 100, 'electrode': 101, 'exeggcute': 102,
+      'exeggutor': 103, 'cubone': 104, 'marowak': 105,
+      'hitmonlee': 106, 'hitmonchan': 107, 'lickitung': 108,
+      'koffing': 109, 'weezing': 110, 'rhyhorn': 111,
+      'rhydon': 112, 'chansey': 113, 'tangela': 114,
+      'kangaskhan': 115, 'horsea': 116, 'seadra': 117,
+      'goldeen': 118, 'seaking': 119, 'staryu': 120,
+      'starmie': 121, 'mr-mime': 122, 'scyther': 123,
+      'jynx': 124, 'electabuzz': 125, 'magmar': 126,
+      'pinsir': 127, 'tauros': 128, 'magikarp': 129,
+      'gyarados': 130, 'lapras': 131, 'ditto': 132,
+      'eevee': 133, 'vaporeon': 134, 'jolteon': 135,
+      'flareon': 136, 'porygon': 137, 'omanyte': 138,
+      'omastar': 139, 'kabuto': 140, 'kabutops': 141,
+      'aerodactyl': 142, 'snorlax': 143, 'articuno': 144,
+      'zapdos': 145, 'moltres': 146, 'dratini': 147,
+      'dragonair': 148, 'dragonite': 149, 'mewtwo': 150,
+      'mew': 151
+    };
+    
+    const name = pokemon.name?.toLowerCase() || '';
+    return pokemonNameToId[name] || 1; // Default to Bulbasaur if not found
+  };
 
   useEffect(() => {
     // Connect to socket
@@ -25,12 +90,14 @@ const Battle = () => {
     });
 
     socketService.on('battleStart', (state) => {
+      console.log('Battle started:', state);
       setSearching(false);
       setBattleState(state);
       setBattleLog(state.battleLog || []);
     });
 
     socketService.on('battleUpdate', (state) => {
+      console.log('Battle update:', state);
       setBattleState(state);
       setBattleLog(state.battleLog || []);
       setSelectedMove(null);
@@ -41,12 +108,16 @@ const Battle = () => {
     });
 
     socketService.on('battleEnd', ({ winner, reason, battleLog }) => {
-      alert(winner === userId ? 'You won!' : 'You lost!');
+      console.log('Battle ended:', { winner, reason });
+      const isWinner = winner === userId;
+      alert(isWinner ? 'You won!' : 'You lost!');
       setBattleState(null);
       setBattleLog(battleLog || []);
+      setSearching(false);
     });
 
     socketService.on('error', ({ message }) => {
+      console.error('Socket error:', message);
       alert(`Error: ${message}`);
     });
 
@@ -59,6 +130,15 @@ const Battle = () => {
       socketService.removeAllListeners('error');
     };
   }, [userId, username, token]);
+
+  // Reset sprite errors when Pokemon change
+  useEffect(() => {
+    if (battleState) {
+      console.log('Opponent Pokemon Data:', battleState.opponent.activePokemon);
+      console.log('Player Pokemon Data:', battleState.player.activePokemon);
+      setSpriteErrors({ player: false, opponent: false });
+    }
+  }, [battleState?.player?.activePokemon?.name, battleState?.opponent?.activePokemon?.name]);
 
   const handleJoinMatchmaking = () => {
     if (!userId || !teamId) {
@@ -76,6 +156,7 @@ const Battle = () => {
   const handleSelectMove = (moveName) => {
     if (!battleState || selectedMove) return;
     
+    console.log('Selecting move:', moveName);
     setSelectedMove(moveName);
     socketService.selectMove(battleState.battleId, userId, moveName);
   };
@@ -89,6 +170,7 @@ const Battle = () => {
       return;
     }
     
+    console.log('Switching to Pokemon:', index);
     socketService.switchPokemon(battleState.battleId, userId, index);
     setShowSwitchMenu(false);
   };
@@ -97,6 +179,7 @@ const Battle = () => {
     if (!battleState) return;
     
     if (window.confirm('Are you sure you want to forfeit?')) {
+      console.log('Forfeiting battle:', battleState.battleId);
       socketService.forfeit(battleState.battleId, userId);
     }
   };
@@ -131,7 +214,7 @@ const Battle = () => {
         <div className="matchmaking">
           <h1>Battle Arena</h1>
           <button onClick={handleJoinMatchmaking} className="btn-primary">
-            Find Battle?
+            Find Battle
           </button>
         </div>
       </div>
@@ -172,14 +255,38 @@ const Battle = () => {
             </div>
           </div>
           <div className="pokemon-sprite opponent-sprite">
-            🎮 {/* Replace with actual Pokemon sprite */}
+            {!spriteErrors.opponent ? (
+              <img 
+                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${getPokemonId(battleState.opponent.activePokemon)}.png`}
+                alt={battleState.opponent.activePokemon.name}
+                onError={(e) => {
+                  console.error('Failed to load opponent sprite:', battleState.opponent.activePokemon);
+                  console.error('Attempted URL:', e.target.src);
+                  setSpriteErrors(prev => ({ ...prev, opponent: true }));
+                }}
+              />
+            ) : (
+              <div style={{ fontSize: '64px' }}>🎮</div>
+            )}
           </div>
         </div>
 
         {/* Player Pokemon */}
         <div className="pokemon-area player">
           <div className="pokemon-sprite player-sprite">
-            🎮 {/* Replace with actual Pokemon sprite */}
+            {!spriteErrors.player ? (
+              <img 
+                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/back/${getPokemonId(battleState.player.activePokemon)}.png`}
+                alt={battleState.player.activePokemon.name}
+                onError={(e) => {
+                  console.error('Failed to load player sprite:', battleState.player.activePokemon);
+                  console.error('Attempted URL:', e.target.src);
+                  setSpriteErrors(prev => ({ ...prev, player: true }));
+                }}
+              />
+            ) : (
+              <div style={{ fontSize: '64px' }}>🎮</div>
+            )}
           </div>
           <div className="pokemon-info">
             <div className="pokemon-name">
@@ -215,7 +322,7 @@ const Battle = () => {
         <div className="battle-log">
           {battleLog.map((log, index) => (
             <div key={index} className="log-entry">
-              {log.message}
+              {typeof log === 'string' ? log : log.message || JSON.stringify(log)}
             </div>
           ))}
         </div>
