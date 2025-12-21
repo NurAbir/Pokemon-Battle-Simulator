@@ -172,14 +172,22 @@ const Battle = () => {
             </div>
           </div>
           <div className="pokemon-sprite opponent-sprite">
-            🎮 {/* Replace with actual Pokemon sprite */}
+            <img 
+              src={`https://raw.githubusercontent.com/PokeAPI/sprites/refs/heads/master/sprites/pokemon/${battleState.opponent.activePokemon.pokemonId}.png`}
+              alt={battleState.opponent.activePokemon.name}
+              onError={(e) => e.target.src = '🎮'}
+            />
           </div>
         </div>
 
         {/* Player Pokemon */}
         <div className="pokemon-area player">
           <div className="pokemon-sprite player-sprite">
-            🎮 {/* Replace with actual Pokemon sprite */}
+            <img 
+              src={`https://raw.githubusercontent.com/PokeAPI/sprites/refs/heads/master/sprites/pokemon/${battleState.player.activePokemon.pokemonId}.png`}
+              alt={battleState.player.activePokemon.name}
+              onError={(e) => e.target.src = '🎮'}
+            />
           </div>
           <div className="pokemon-info">
             <div className="pokemon-name">
