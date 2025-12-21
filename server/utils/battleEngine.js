@@ -15,7 +15,6 @@ class BattleEngine {
         team2Count: player2.team?.length
       });
 
-      // Validate teams
       if (!player1.team || player1.team.length === 0) {
         throw new Error(`Player ${player1.username} has no Pokemon`);
       }
@@ -62,13 +61,11 @@ class BattleEngine {
   // Initialize Pokemon for battle
   static initializePokemon(pokemon) {
     try {
-      // Check if pokemon is null or undefined
       if (!pokemon) {
         console.error('Pokemon is null or undefined');
         throw new Error('Pokemon data is missing');
       }
 
-      // Log the pokemon structure to debug
       console.log('Initializing Pokemon:', {
         id: pokemon.id,
         name: pokemon.name,
@@ -76,7 +73,6 @@ class BattleEngine {
         hasBaseStats: !!pokemon.baseStats
       });
 
-      // Handle different possible data structures
       const stats = pokemon.calculatedStats || pokemon.stats || pokemon.baseStats;
       
       if (!stats) {
@@ -118,7 +114,6 @@ class BattleEngine {
     const player1 = battle.players[0];
     const player2 = battle.players[1];
     
-    // Handle switches first
     const actions = [];
     
     if (player1.switchTo !== undefined && player1.switchTo !== null) {
@@ -133,7 +128,6 @@ class BattleEngine {
       actions.push({ player: 1, type: 'move', priority: 0 });
     }
     
-    // Sort by priority (switches first), then by speed
     actions.sort((a, b) => {
       if (a.priority !== b.priority) return b.priority - a.priority;
       
@@ -141,10 +135,9 @@ class BattleEngine {
       const speedB = battle.players[b.player].team[battle.players[b.player].activePokemonIndex].stats.spe;
       
       if (speedA !== speedB) return speedB - speedA;
-      return Math.random() - 0.5; // Speed tie
+      return Math.random() - 0.5;
     });
     
-    // Execute actions
     for (const action of actions) {
       if (action.type === 'switch') {
         await this.executeSwitch(battle, action.player);
@@ -152,14 +145,12 @@ class BattleEngine {
         await this.executeMove(battle, action.player);
       }
       
-      // Check if battle ended
       if (battle.checkBattleEnd()) {
         await battle.save();
         return battle;
       }
     }
     
-    // Reset selections and increment turn
     battle.players[0].selectedMove = null;
     battle.players[0].switchTo = null;
     battle.players[0].ready = false;
@@ -197,34 +188,70 @@ class BattleEngine {
     const attackingPokemon = attacker.team[attacker.activePokemonIndex];
     const defendingPokemon = defender.team[defender.activePokemonIndex];
     
-    // Check if Pokemon fainted
+    console.log('=== EXECUTING MOVE ===');
+    console.log('Attacker:', attackingPokemon.nickname, 'HP:', attackingPokemon.currentHp);
+    console.log('Defender:', defendingPokemon.nickname, 'HP:', defendingPokemon.currentHp);
+    console.log('Selected move:', attacker.selectedMove);
+    
     if (attackingPokemon.fainted) {
+      console.log('Attacker has fainted, skipping move');
       return;
     }
     
-    // Get move data
-    const move = await Move.findOne({ name: attacker.selectedMove });
+    console.log('Searching for move:', attacker.selectedMove);
+    
+    const normalizedMoveName = attacker.selectedMove
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
+    
+    console.log('Normalized to:', normalizedMoveName);
+    
+    let move = await Move.findOne({ name: normalizedMoveName });
+    console.log('Match result:', move ? 'FOUND' : 'NOT FOUND');
+    
     if (!move) {
-      battle.addLog(`${attackingPokemon.nickname} tried to use ${attacker.selectedMove}, but it failed!`);
+      const allMoves = await Move.find().limit(10);
+      console.log('\n=== MOVES IN DATABASE ===');
+      allMoves.forEach(m => {
+        console.log(`- "${m.name}" (${m.type}, ${m.category}, power: ${m.power})`);
+      });
+      console.log('=========================\n');
+      
+      const errorMsg = `${attackingPokemon.nickname} tried to use ${attacker.selectedMove}, but it failed!`;
+      console.error('Move not found:', attacker.selectedMove);
+      battle.addLog(errorMsg);
       return;
     }
+    
+    console.log('Move found:', move.name, 'Power:', move.power, 'Type:', move.type, 'Category:', move.category);
     
     battle.addLog(`${attackingPokemon.nickname} used ${move.name}!`);
     
-    // Check accuracy
-    if (!moveHits(move.accuracy, attackingPokemon.statStages.accuracy, defendingPokemon.statStages.evasion)) {
-      battle.addLog(`${attackingPokemon.nickname}'s attack missed!`);
+    const hits = moveHits(move.accuracy, attackingPokemon.statStages.accuracy, defendingPokemon.statStages.evasion);
+    console.log('Accuracy check:', hits);
+    
+    if (!hits) {
+      const missMsg = `${attackingPokemon.nickname}'s attack missed!`;
+      console.log(missMsg);
+      battle.addLog(missMsg);
       return;
     }
     
-    // Calculate damage
     if (move.category !== 'status') {
+      console.log('Calculating damage...');
+      console.log('Attacker stats:', attackingPokemon.stats);
+      console.log('Defender stats:', defendingPokemon.stats);
+      
       const result = calculateDamage(attackingPokemon, defendingPokemon, move);
       
-      // Apply damage
+      console.log('Damage result:', result);
+      
+      const oldHp = defendingPokemon.currentHp;
       defendingPokemon.currentHp = Math.max(0, defendingPokemon.currentHp - result.damage);
       
-      // Log results
+      console.log(`HP: ${oldHp} -> ${defendingPokemon.currentHp} (Damage: ${result.damage})`);
+      
       if (result.isCrit) {
         battle.addLog("A critical hit!");
       }
@@ -234,20 +261,29 @@ class BattleEngine {
         battle.addLog(effMsg);
       }
       
-      // Check if fainted
       if (defendingPokemon.currentHp === 0) {
         defendingPokemon.fainted = true;
-        battle.addLog(`${defendingPokemon.nickname} fainted!`);
+        const faintMsg = `${defendingPokemon.nickname} fainted!`;
+        console.log(faintMsg);
+        battle.addLog(faintMsg);
         
-        // Check if player has any Pokemon left
         const hasAvailable = defender.team.some(p => !p.fainted);
+        console.log('Defender has available Pokemon:', hasAvailable);
+        
         if (!hasAvailable) {
           battle.status = 'completed';
           battle.winner = attacker.userId;
-          battle.addLog(`${attacker.username} wins the battle!`);
+          const winMsg = `${attacker.username} wins the battle!`;
+          console.log(winMsg);
+          battle.addLog(winMsg);
         }
       }
+    } else {
+      console.log('Status move - no damage calculation');
+      battle.addLog(`${attackingPokemon.nickname} used a status move!`);
     }
+    
+    console.log('=== MOVE EXECUTION COMPLETE ===');
   }
   
   // Get battle state for client
@@ -289,7 +325,7 @@ class BattleEngine {
           fainted: p.fainted
         }))
       },
-      battleLog: battle.battleLog.slice(-10) // Last 10 messages
+      battleLog: battle.battleLog.slice(-10)
     };
   }
 }

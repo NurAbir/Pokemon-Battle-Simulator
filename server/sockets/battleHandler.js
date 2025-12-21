@@ -194,8 +194,14 @@ module.exports = (io) => {
     // Select move
     socket.on('selectMove', async ({ battleId, userId, moveName }) => {
       try {
+        console.log('=== MOVE SELECTED ===');
+        console.log('Battle ID:', battleId);
+        console.log('User ID:', userId);
+        console.log('Move:', moveName);
+        
         const battle = await Battle.findOne({ battleId, status: 'active' });
         if (!battle) {
+          console.error('Battle not found or not active');
           socket.emit('error', { message: 'Battle not found' });
           return;
         }
@@ -203,7 +209,19 @@ module.exports = (io) => {
         // Compare userId as strings
         const playerIndex = battle.players.findIndex(p => p.userId === userId);
         if (playerIndex === -1) {
+          console.error('Player not in battle');
           socket.emit('error', { message: 'Not in this battle' });
+          return;
+        }
+        
+        console.log('Player index:', playerIndex);
+        console.log('Current turn:', battle.turn);
+        
+        // Validate move
+        const activePokemon = battle.players[playerIndex].team[battle.players[playerIndex].activePokemonIndex];
+        if (!activePokemon.moves.includes(moveName)) {
+          console.error('Invalid move:', moveName, 'Available:', activePokemon.moves);
+          socket.emit('error', { message: 'Invalid move' });
           return;
         }
         
@@ -211,6 +229,8 @@ module.exports = (io) => {
         battle.players[playerIndex].selectedMove = moveName;
         battle.players[playerIndex].ready = true;
         await battle.save();
+        
+        console.log('Move saved, player ready');
         
         const battleInfo = activeBattles.get(battleId);
         if (battleInfo) {
@@ -221,9 +241,17 @@ module.exports = (io) => {
         }
         
         // Check if both players ready
-        if (battle.players.every(p => p.ready)) {
+        const bothReady = battle.players.every(p => p.ready);
+        console.log('Both players ready:', bothReady);
+        
+        if (bothReady) {
+          console.log('Processing turn...');
+          
           // Process turn
           const updatedBattle = await BattleEngine.processTurn(battle);
+          
+          console.log('Turn processed, battle status:', updatedBattle.status);
+          console.log('Battle log entries:', updatedBattle.battleLog.length);
           
           // Send updated state to both players
           const state1 = BattleEngine.getBattleState(updatedBattle, battle.players[0].userId);
@@ -235,13 +263,17 @@ module.exports = (io) => {
             const socket2 = io.sockets.sockets.get(sockets[1]);
             
             if (socket1 && socket2) {
+              console.log('Sending battle updates to both players');
               socket1.emit('battleUpdate', state1);
               socket2.emit('battleUpdate', state2);
+            } else {
+              console.error('One or both sockets not found');
             }
           }
           
           // Check if battle ended
           if (updatedBattle.status === 'completed') {
+            console.log('Battle completed, winner:', updatedBattle.winner);
             if (battleInfo) {
               io.to(battleInfo.room).emit('battleEnd', {
                 winner: updatedBattle.winner,
@@ -254,7 +286,7 @@ module.exports = (io) => {
         }
       } catch (error) {
         console.error('Move selection error:', error);
-        socket.emit('error', { message: 'Failed to select move' });
+        socket.emit('error', { message: 'Failed to select move: ' + error.message });
       }
     });
     
