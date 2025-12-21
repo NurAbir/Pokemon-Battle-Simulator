@@ -4,17 +4,17 @@ const chatRoomSchema = new mongoose.Schema({
   roomId: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    index: true
   },
   type: {
     type: String,
     required: true,
-    enum: ['global', 'private', 'battle'],
-    index: true
+    enum: ['global', 'private', 'battle']
   },
   // For private chats: array of two user IDs
-  // For battle chats: array of participant user IDs
-  // For global: empty array (all users can participate)
+  // For battle chats: array of two player IDs
+  // For global: empty array
   participants: [{
     type: String,
     ref: 'User'
@@ -25,55 +25,46 @@ const chatRoomSchema = new mongoose.Schema({
     ref: 'Battle',
     default: null
   },
-  // Track unread counts per user for private chats
-  unreadCounts: {
-    type: Map,
-    of: Number,
-    default: {}
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  lastMessageAt: {
+  // Track when room was last active
+  lastActivity: {
     type: Date,
-    default: null
+    default: Date.now
+  },
+  // For battle chats - whether the room is archived
+  isArchived: {
+    type: Boolean,
+    default: false
   }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
 
-// Indexes for efficient queries
-chatRoomSchema.index({ participants: 1 });
-chatRoomSchema.index({ type: 1, isActive: 1 });
+// Index for finding private chats between users
+chatRoomSchema.index({ type: 1, participants: 1 });
 chatRoomSchema.index({ battleId: 1 });
 
-// Find or create private chat between two users
-chatRoomSchema.statics.findOrCreatePrivate = async function(userId1, userId2) {
-  const generateId = require('../utils/generateId');
-  const sortedIds = [userId1, userId2].sort();
-  
-  let room = await this.findOne({
-    type: 'private',
-    participants: { $all: sortedIds, $size: 2 }
-  });
-  
-  if (!room) {
-    room = await this.create({
-      roomId: generateId('room'),
-      type: 'private',
-      participants: sortedIds,
-      unreadCounts: { [userId1]: 0, [userId2]: 0 }
-    });
-  }
-  
-  return room;
+// Update last activity timestamp
+chatRoomSchema.methods.updateActivity = async function() {
+  this.lastActivity = new Date();
+  return this.save();
 };
 
-// Get or create global chat room
+// Archive the room (for battle chats)
+chatRoomSchema.methods.archive = async function() {
+  this.isArchived = true;
+  return this.save();
+};
+
+// Check if user is participant
+chatRoomSchema.methods.isParticipant = function(userId) {
+  if (this.type === 'global') return true;
+  return this.participants.includes(userId);
+};
+
+// Static: find or create global chat room
 chatRoomSchema.statics.getGlobalRoom = async function() {
-  const generateId = require('../utils/generateId');
-  
+  const { generateId } = require('../utils/generateId');
   let room = await this.findOne({ type: 'global' });
-  
   if (!room) {
     room = await this.create({
       roomId: 'global_chat',
@@ -81,40 +72,46 @@ chatRoomSchema.statics.getGlobalRoom = async function() {
       participants: []
     });
   }
+  return room;
+};
+
+// Static: find or create private chat between two users
+chatRoomSchema.statics.getPrivateRoom = async function(userId1, userId2) {
+  const { generateId } = require('../utils/generateId');
+  
+  // Sort IDs to ensure consistent lookup
+  const participants = [userId1, userId2].sort();
+  
+  let room = await this.findOne({
+    type: 'private',
+    participants: { $all: participants, $size: 2 }
+  });
+  
+  if (!room) {
+    room = await this.create({
+      roomId: generateId('chat'),
+      type: 'private',
+      participants
+    });
+  }
   
   return room;
 };
 
-// Create battle chat room
-chatRoomSchema.statics.createBattleRoom = async function(battleId, participants) {
-  const generateId = require('../utils/generateId');
-  
-  return await this.create({
-    roomId: generateId('battle_room'),
+// Static: create battle chat room
+chatRoomSchema.statics.createBattleRoom = async function(battleId, player1Id, player2Id) {
+  const { generateId } = require('../utils/generateId');
+  return this.create({
+    roomId: generateId('bchat'),
     type: 'battle',
     battleId,
-    participants,
-    isActive: true
+    participants: [player1Id, player2Id]
   });
 };
 
-// Archive battle chat room
-chatRoomSchema.methods.archive = async function() {
-  this.isActive = false;
-  return await this.save();
-};
-
-// Reset unread count for user
-chatRoomSchema.methods.resetUnread = async function(userId) {
-  this.unreadCounts.set(userId, 0);
-  return await this.save();
-};
-
-// Increment unread count for user
-chatRoomSchema.methods.incrementUnread = async function(userId) {
-  const current = this.unreadCounts.get(userId) || 0;
-  this.unreadCounts.set(userId, current + 1);
-  return await this.save();
+// Static: get battle room by battleId
+chatRoomSchema.statics.getBattleRoom = async function(battleId) {
+  return this.findOne({ type: 'battle', battleId, isArchived: false });
 };
 
 module.exports = mongoose.model('ChatRoom', chatRoomSchema);

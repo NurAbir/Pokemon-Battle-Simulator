@@ -2,29 +2,29 @@ const mongoose = require('mongoose');
 
 // Event types for battle log entries
 const EVENT_TYPES = {
-  MOVE: 'MOVE',           // Move used by a Pokemon
-  DAMAGE: 'DAMAGE',       // Damage dealt
-  STATUS: 'STATUS',       // Status effect applied/removed
-  FAINT: 'FAINT',         // Pokemon fainted
-  SWITCH: 'SWITCH',       // Pokemon switched
-  ABILITY: 'ABILITY',     // Ability activated
-  ITEM: 'ITEM',           // Item used
-  INFO: 'INFO',           // General information
-  SYSTEM: 'SYSTEM',       // System message (turn start, battle start/end)
-  WARNING: 'WARNING',     // Inactivity warning
-  TIMEOUT: 'TIMEOUT'      // Player timed out
+  MOVE: 'MOVE',
+  DAMAGE: 'DAMAGE',
+  STATUS: 'STATUS',
+  FAINT: 'FAINT',
+  SWITCH: 'SWITCH',
+  INFO: 'INFO',
+  SYSTEM: 'SYSTEM',
+  TURN: 'TURN',
+  WARNING: 'WARNING',
+  TIMEOUT: 'TIMEOUT',
+  BATTLE_START: 'BATTLE_START',
+  BATTLE_END: 'BATTLE_END'
 };
 
-const battleLogSchema = new mongoose.Schema({
-  logId: {
+const battleLogEntrySchema = new mongoose.Schema({
+  entryId: {
     type: String,
     required: true,
-    unique: true
+    index: true
   },
   battleId: {
     type: String,
     required: true,
-    ref: 'Battle',
     index: true
   },
   turn: {
@@ -34,36 +34,44 @@ const battleLogSchema = new mongoose.Schema({
   },
   eventType: {
     type: String,
-    required: true,
-    enum: Object.values(EVENT_TYPES)
+    enum: Object.values(EVENT_TYPES),
+    required: true
   },
-  // Human-readable message for display
   message: {
     type: String,
     required: true
   },
-  // Structured data for programmatic access
   data: {
     type: mongoose.Schema.Types.Mixed,
     default: {}
   },
-  // Player associated with this event (if applicable)
   playerId: {
     type: String,
-    ref: 'User',
     default: null
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now,
+    index: true
   }
-}, { timestamps: true });
+}, { 
+  timestamps: false,
+  versionKey: false
+});
 
-// Compound index for ordered retrieval
-battleLogSchema.index({ battleId: 1, createdAt: 1 });
+// Compound index for efficient queries
+battleLogEntrySchema.index({ battleId: 1, timestamp: 1 });
+battleLogEntrySchema.index({ battleId: 1, turn: 1 });
 
-// Static: Add a new log entry
-battleLogSchema.statics.addEntry = async function(battleId, turn, eventType, message, data = {}, playerId = null) {
-  const generateId = require('../utils/generateId');
-  
-  const log = new this({
-    logId: generateId('log'),
+// Static: Generate unique entry ID
+battleLogEntrySchema.statics.generateEntryId = function() {
+  return `log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+};
+
+// Static: Create and save a log entry
+battleLogEntrySchema.statics.createEntry = async function(battleId, turn, eventType, message, data = {}, playerId = null) {
+  const entry = new this({
+    entryId: this.generateEntryId(),
     battleId,
     turn,
     eventType,
@@ -71,54 +79,33 @@ battleLogSchema.statics.addEntry = async function(battleId, turn, eventType, mes
     data,
     playerId
   });
-  
-  await log.save();
-  return log;
+  await entry.save();
+  return entry.toJSON();
 };
 
-// Static: Get full log for a battle
-battleLogSchema.statics.getLog = async function(battleId) {
-  return await this.find({ battleId }).sort({ createdAt: 1 });
+// Static: Get full battle log
+battleLogEntrySchema.statics.getBattleLog = async function(battleId) {
+  return this.find({ battleId }).sort({ timestamp: 1 }).lean();
 };
 
-// Static: Get logs after a specific timestamp (for reconnection)
-battleLogSchema.statics.getLogAfter = async function(battleId, timestamp) {
-  return await this.find({
-    battleId,
-    createdAt: { $gt: new Date(timestamp) }
-  }).sort({ createdAt: 1 });
+// Static: Get log entries after a specific timestamp (for reconnection)
+battleLogEntrySchema.statics.getLogAfter = async function(battleId, afterTimestamp) {
+  return this.find({ 
+    battleId, 
+    timestamp: { $gt: new Date(afterTimestamp) } 
+  }).sort({ timestamp: 1 }).lean();
 };
 
-// Static: Create system message
-battleLogSchema.statics.systemMessage = async function(battleId, turn, message) {
-  return await this.addEntry(battleId, turn, EVENT_TYPES.SYSTEM, message);
+// Static: Get recent entries
+battleLogEntrySchema.statics.getRecentEntries = async function(battleId, limit = 20) {
+  return this.find({ battleId })
+    .sort({ timestamp: -1 })
+    .limit(limit)
+    .lean()
+    .then(entries => entries.reverse());
 };
 
-// Static: Create warning message
-battleLogSchema.statics.warningMessage = async function(battleId, turn, playerId, secondsRemaining) {
-  return await this.addEntry(
-    battleId,
-    turn,
-    EVENT_TYPES.WARNING,
-    `Warning: ${secondsRemaining} seconds remaining to make a move!`,
-    { secondsRemaining },
-    playerId
-  );
-};
+// Export event types for use elsewhere
+battleLogEntrySchema.statics.EVENT_TYPES = EVENT_TYPES;
 
-// Static: Create timeout message
-battleLogSchema.statics.timeoutMessage = async function(battleId, turn, playerId) {
-  return await this.addEntry(
-    battleId,
-    turn,
-    EVENT_TYPES.TIMEOUT,
-    `Player timed out!`,
-    {},
-    playerId
-  );
-};
-
-// Export event types for use in other modules
-battleLogSchema.statics.EVENT_TYPES = EVENT_TYPES;
-
-module.exports = mongoose.model('BattleLog', battleLogSchema);
+module.exports = mongoose.model('BattleLog', battleLogEntrySchema);

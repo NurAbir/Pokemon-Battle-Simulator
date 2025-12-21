@@ -1,27 +1,34 @@
 const Notification = require('../models/Notification');
 const User = require('../models/User');
-const Battle = require('../models/Battle');
-const generateId = require('../utils/generateId');
+const Team = require('../models/Team');
+const { generateId } = require('../utils/generateId');
 
-// Get user's notifications
+// Get notifications for authenticated user
 exports.getNotifications = async (req, res) => {
   try {
-    const { page = 1, limit = 20, unreadOnly = false } = req.query;
-    const userId = req.user.userId;
-
-    const notifications = await Notification.getForUser(userId, {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      unreadOnly: unreadOnly === 'true'
-    });
-
-    const unreadCount = await Notification.getUnreadCount(userId);
-
+    const { limit = 50, unreadOnly = false, type } = req.query;
+    
+    const query = { recipientId: req.user.userId };
+    
+    if (unreadOnly === 'true') {
+      query.isRead = false;
+    }
+    
+    if (type) {
+      query.type = type;
+    }
+    
+    const notifications = await Notification.find(query)
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .lean();
+    
     res.json({
       success: true,
-      data: { notifications, unreadCount }
+      data: notifications
     });
   } catch (error) {
+    console.error('Get notifications error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -29,244 +36,14 @@ exports.getNotifications = async (req, res) => {
 // Get unread notification count
 exports.getUnreadCount = async (req, res) => {
   try {
-    const count = await Notification.getUnreadCount(req.user.userId);
+    const count = await Notification.countDocuments({
+      recipientId: req.user.userId,
+      isRead: false
+    });
+    
     res.json({ success: true, data: { count } });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Send match invite
-exports.sendMatchInvite = async (req, res) => {
-  try {
-    const { targetUsername, battleMode = 'normal' } = req.body;
-    const senderId = req.user.userId;
-    const senderUsername = req.user.username;
-
-    // Cannot invite yourself
-    if (targetUsername === senderUsername) {
-      return res.status(400).json({ success: false, message: 'Cannot invite yourself' });
-    }
-
-    // Find target user
-    const targetUser = await User.findOne({ username: targetUsername });
-    if (!targetUser) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    // Check for duplicate pending invite
-    const hasPending = await Notification.hasPendingNotification(
-      senderId,
-      targetUser.userId,
-      'matchInvite'
-    );
-    if (hasPending) {
-      return res.status(400).json({ success: false, message: 'Pending invite already exists' });
-    }
-
-    // Create notification
-    const notification = await Notification.create({
-      notificationId: generateId('notif'),
-      recipientId: targetUser.userId,
-      senderId,
-      type: 'matchInvite',
-      data: { battleMode, senderUsername }
-    });
-
-    // Emit via socket if user is online
-    const io = req.app.get('io');
-    if (io && targetUser.socketId) {
-      io.to(targetUser.socketId).emit('notification:new', notification);
-    }
-
-    res.status(201).json({ success: true, data: notification });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Send friend request
-exports.sendFriendRequest = async (req, res) => {
-  try {
-    const { targetUsername } = req.body;
-    const senderId = req.user.userId;
-    const senderUsername = req.user.username;
-
-    // Cannot add yourself
-    if (targetUsername === senderUsername) {
-      return res.status(400).json({ success: false, message: 'Cannot add yourself as friend' });
-    }
-
-    // Find target user
-    const targetUser = await User.findOne({ username: targetUsername });
-    if (!targetUser) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    // Check if already friends
-    if (req.user.friends.includes(targetUser.userId)) {
-      return res.status(400).json({ success: false, message: 'Already friends' });
-    }
-
-    // Check for duplicate pending request
-    const hasPending = await Notification.hasPendingNotification(
-      senderId,
-      targetUser.userId,
-      'friendRequest'
-    );
-    if (hasPending) {
-      return res.status(400).json({ success: false, message: 'Pending request already exists' });
-    }
-
-    // Create notification
-    const notification = await Notification.create({
-      notificationId: generateId('notif'),
-      recipientId: targetUser.userId,
-      senderId,
-      type: 'friendRequest',
-      data: { senderUsername }
-    });
-
-    // Emit via socket if user is online
-    const io = req.app.get('io');
-    if (io && targetUser.socketId) {
-      io.to(targetUser.socketId).emit('notification:new', notification);
-    }
-
-    res.status(201).json({ success: true, data: notification });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Respond to match invite
-exports.respondToMatchInvite = async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    const { accept } = req.body;
-    const userId = req.user.userId;
-
-    const notification = await Notification.findOne({ notificationId });
-    if (!notification) {
-      return res.status(404).json({ success: false, message: 'Notification not found' });
-    }
-
-    // Verify ownership
-    if (notification.recipientId !== userId) {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
-
-    // Verify type and status
-    if (notification.type !== 'matchInvite' || notification.status !== 'pending') {
-      return res.status(400).json({ success: false, message: 'Invalid notification' });
-    }
-
-    // Update notification status
-    await notification.respond(accept);
-
-    const sender = await User.findOne({ userId: notification.senderId });
-    const io = req.app.get('io');
-
-    // Notify sender of response
-    const responseNotification = await Notification.create({
-      notificationId: generateId('notif'),
-      recipientId: notification.senderId,
-      senderId: userId,
-      type: 'matchInviteResponse',
-      data: {
-        accepted: accept,
-        responderUsername: req.user.username,
-        originalNotificationId: notificationId
-      }
-    });
-
-    if (io && sender?.socketId) {
-      io.to(sender.socketId).emit('notification:new', responseNotification);
-    }
-
-    // If accepted, create battle
-    let battle = null;
-    if (accept) {
-      battle = await Battle.create({
-        battleId: generateId('battle'),
-        player1Id: notification.senderId,
-        player2Id: userId,
-        battleStatus: 'waiting'
-      });
-
-      // Notify both players to start battle
-      if (io) {
-        const battleData = { battleId: battle.battleId, players: [notification.senderId, userId] };
-        if (sender?.socketId) io.to(sender.socketId).emit('battle:start', battleData);
-        if (req.user.socketId) io.to(req.user.socketId).emit('battle:start', battleData);
-      }
-    }
-
-    res.json({ success: true, data: { notification, battle } });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Respond to friend request
-exports.respondToFriendRequest = async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    const { accept } = req.body;
-    const userId = req.user.userId;
-
-    const notification = await Notification.findOne({ notificationId });
-    if (!notification) {
-      return res.status(404).json({ success: false, message: 'Notification not found' });
-    }
-
-    // Verify ownership
-    if (notification.recipientId !== userId) {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
-
-    // Verify type and status
-    if (notification.type !== 'friendRequest' || notification.status !== 'pending') {
-      return res.status(400).json({ success: false, message: 'Invalid notification' });
-    }
-
-    // Update notification status
-    await notification.respond(accept);
-
-    const sender = await User.findOne({ userId: notification.senderId });
-
-    // If accepted, add to friends lists
-    if (accept) {
-      await User.findOneAndUpdate(
-        { userId },
-        { $addToSet: { friends: notification.senderId } }
-      );
-      await User.findOneAndUpdate(
-        { userId: notification.senderId },
-        { $addToSet: { friends: userId } }
-      );
-    }
-
-    // Notify sender of response
-    const io = req.app.get('io');
-    const responseNotification = await Notification.create({
-      notificationId: generateId('notif'),
-      recipientId: notification.senderId,
-      senderId: userId,
-      type: 'friendRequestResponse',
-      data: {
-        accepted: accept,
-        responderUsername: req.user.username,
-        originalNotificationId: notificationId
-      }
-    });
-
-    if (io && sender?.socketId) {
-      io.to(sender.socketId).emit('notification:new', responseNotification);
-    }
-
-    res.json({ success: true, data: { notification } });
-  } catch (error) {
+    console.error('Get unread count error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -275,20 +52,24 @@ exports.respondToFriendRequest = async (req, res) => {
 exports.markAsRead = async (req, res) => {
   try {
     const { notificationId } = req.params;
-    const userId = req.user.userId;
-
+    
     const notification = await Notification.findOne({ notificationId });
+    
     if (!notification) {
       return res.status(404).json({ success: false, message: 'Notification not found' });
     }
-
-    if (notification.recipientId !== userId) {
+    
+    // Verify ownership
+    if (notification.recipientId !== req.user.userId) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
-
-    await notification.markAsRead();
+    
+    notification.isRead = true;
+    await notification.save();
+    
     res.json({ success: true, data: notification });
   } catch (error) {
+    console.error('Mark as read error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -300,48 +81,194 @@ exports.markAllAsRead = async (req, res) => {
       { recipientId: req.user.userId, isRead: false },
       { isRead: true }
     );
+    
     res.json({ success: true, message: 'All notifications marked as read' });
   } catch (error) {
+    console.error('Mark all as read error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Send battle result notifications (called internally after battle ends)
-exports.sendBattleResults = async (battleId, winnerId, loserId, summary) => {
-  const io = global.io; // Use global io instance
-  
-  const winner = await User.findOne({ userId: winnerId });
-  const loser = await User.findOne({ userId: loserId });
-
-  const createResultNotification = async (recipientId, isWinner) => {
-    return await Notification.create({
-      notificationId: generateId('notif'),
-      recipientId,
-      senderId: null, // System notification
-      type: 'battleResult',
-      data: {
-        battleId,
-        winnerId,
-        loserId,
-        winnerUsername: winner?.username,
-        loserUsername: loser?.username,
-        isWinner,
-        summary
-      }
+// Send match invite
+exports.sendMatchInvite = async (req, res) => {
+  try {
+    const { recipientUsername, teamId } = req.body;
+    
+    if (!recipientUsername || !teamId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Recipient username and team ID required' 
+      });
+    }
+    
+    // Prevent self-invite
+    if (recipientUsername.toLowerCase() === req.user.username.toLowerCase()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cannot invite yourself to battle' 
+      });
+    }
+    
+    // Find recipient
+    const recipient = await User.findOne({ 
+      username: { $regex: new RegExp(`^${recipientUsername}$`, 'i') }
     });
-  };
-
-  // Create notifications for both players
-  const winnerNotif = await createResultNotification(winnerId, true);
-  const loserNotif = await createResultNotification(loserId, false);
-
-  // Emit via socket if users are online
-  if (io) {
-    if (winner?.socketId) io.to(winner.socketId).emit('notification:new', winnerNotif);
-    if (loser?.socketId) io.to(loser.socketId).emit('notification:new', loserNotif);
+    
+    if (!recipient) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    // Verify team belongs to sender
+    const team = await Team.findOne({ 
+      $or: [{ teamId }, { _id: teamId }],
+      userId: req.user._id
+    });
+    
+    if (!team) {
+      return res.status(404).json({ success: false, message: 'Team not found' });
+    }
+    
+    // Check for duplicate pending invite
+    const existingInvite = await Notification.findOne({
+      senderId: req.user.userId,
+      recipientId: recipient.userId,
+      type: 'matchInvite',
+      status: 'pending',
+      expiresAt: { $gt: new Date() }
+    });
+    
+    if (existingInvite) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'You already have a pending invite to this user' 
+      });
+    }
+    
+    // Create notification
+    const notification = await Notification.createMatchInvite(
+      req.user.userId,
+      req.user.username,
+      recipient.userId,
+      teamId
+    );
+    
+    // Emit socket event (will be handled by socket handler)
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${recipient.userId}`).emit('newNotification', notification);
+    }
+    
+    res.status(201).json({ success: true, data: notification });
+  } catch (error) {
+    console.error('Send match invite error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
-
-  return { winnerNotif, loserNotif };
 };
 
-module.exports = exports;
+// Respond to match invite
+exports.respondToMatchInvite = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const { action, teamId } = req.body;
+    
+    if (!['accept', 'deny'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Invalid action' });
+    }
+    
+    const notification = await Notification.findOne({ notificationId });
+    
+    if (!notification) {
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
+    
+    // Verify ownership
+    if (notification.recipientId !== req.user.userId) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    
+    if (notification.type !== 'matchInvite') {
+      return res.status(400).json({ success: false, message: 'Not a match invite' });
+    }
+    
+    if (notification.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Invite already responded to' });
+    }
+    
+    // Check expiry
+    if (notification.isExpired()) {
+      notification.status = 'expired';
+      await notification.save();
+      return res.status(400).json({ success: false, message: 'Invite has expired' });
+    }
+    
+    notification.status = action === 'accept' ? 'accepted' : 'denied';
+    notification.isRead = true;
+    await notification.save();
+    
+    const io = req.app.get('io');
+    
+    if (action === 'accept') {
+      // Verify responder has a team
+      if (!teamId) {
+        return res.status(400).json({ success: false, message: 'Team ID required to accept battle' });
+      }
+      
+      // Return battle setup info - actual battle creation handled by socket
+      res.json({ 
+        success: true, 
+        data: { 
+          action: 'accepted',
+          senderUserId: notification.senderId,
+          senderTeamId: notification.payload.teamId,
+          responderTeamId: teamId
+        }
+      });
+    } else {
+      // Notify sender of denial
+      const denialNotification = await Notification.create({
+        notificationId: generateId('notif'),
+        recipientId: notification.senderId,
+        senderId: req.user.userId,
+        type: 'matchInviteDenied',
+        payload: {
+          username: req.user.username,
+          message: `${req.user.username} declined your battle invite.`
+        },
+        isRead: false
+      });
+      
+      if (io) {
+        io.to(`user_${notification.senderId}`).emit('newNotification', denialNotification);
+      }
+      
+      res.json({ success: true, data: { action: 'denied' } });
+    }
+  } catch (error) {
+    console.error('Respond to match invite error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Delete notification
+exports.deleteNotification = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    
+    const notification = await Notification.findOne({ notificationId });
+    
+    if (!notification) {
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
+    
+    if (notification.recipientId !== req.user.userId) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    
+    await notification.deleteOne();
+    
+    res.json({ success: true, message: 'Notification deleted' });
+  } catch (error) {
+    console.error('Delete notification error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

@@ -4,7 +4,8 @@ const messageSchema = new mongoose.Schema({
   messageId: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    index: true
   },
   roomId: {
     type: String,
@@ -26,44 +27,84 @@ const messageSchema = new mongoose.Schema({
     required: true,
     maxlength: 1000
   },
-  // For system messages (player joined, left, etc.)
-  isSystem: {
-    type: Boolean,
-    default: false
+  // For tracking read status in private chats
+  readBy: [{
+    type: String,
+    ref: 'User'
+  }],
+  // Message type for future extensibility (text, system, etc.)
+  messageType: {
+    type: String,
+    enum: ['text', 'system'],
+    default: 'text'
   }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
 
-// Index for efficient message retrieval
+// Index for fetching messages in a room
 messageSchema.index({ roomId: 1, createdAt: -1 });
 
-// Get messages for a room with pagination
-messageSchema.statics.getForRoom = async function(roomId, options = {}) {
-  const { limit = 50, before = null } = options;
-  const query = { roomId };
-  
-  if (before) {
-    query.createdAt = { $lt: new Date(before) };
-  }
-  
-  return await this.find(query)
-    .sort({ createdAt: -1 })
-    .limit(limit);
+// Check if message was read by user
+messageSchema.methods.isReadBy = function(userId) {
+  return this.readBy.includes(userId);
 };
 
-// Filter inappropriate content
-messageSchema.methods.moderate = function() {
-  const inappropriateWords = ['badword1', 'badword2']; // Extend as needed
-  let moderated = false;
-  
-  for (const word of inappropriateWords) {
-    if (this.content.toLowerCase().includes(word)) {
-      this.content = '[Message removed by moderator]';
-      moderated = true;
-      break;
-    }
+// Mark as read by user
+messageSchema.methods.markReadBy = async function(userId) {
+  if (!this.readBy.includes(userId)) {
+    this.readBy.push(userId);
+    return this.save();
   }
-  
-  return moderated;
+  return this;
+};
+
+// Static: create a text message
+messageSchema.statics.createMessage = async function(roomId, senderId, senderUsername, content) {
+  const { generateId } = require('../utils/generateId');
+  return this.create({
+    messageId: generateId('msg'),
+    roomId,
+    senderId,
+    senderUsername,
+    content,
+    readBy: [senderId]
+  });
+};
+
+// Static: create system message
+messageSchema.statics.createSystemMessage = async function(roomId, content) {
+  const { generateId } = require('../utils/generateId');
+  return this.create({
+    messageId: generateId('msg'),
+    roomId,
+    senderId: 'system',
+    senderUsername: 'System',
+    content,
+    messageType: 'system',
+    readBy: []
+  });
+};
+
+// Static: get messages for a room with pagination
+messageSchema.statics.getRoomMessages = async function(roomId, limit = 50, before = null) {
+  const query = { roomId };
+  if (before) {
+    query.createdAt = { $lt: before };
+  }
+  return this.find(query)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+};
+
+// Static: count unread messages for user in a room
+messageSchema.statics.countUnread = async function(roomId, userId) {
+  return this.countDocuments({
+    roomId,
+    readBy: { $ne: userId },
+    senderId: { $ne: userId }
+  });
 };
 
 module.exports = mongoose.model('Message', messageSchema);

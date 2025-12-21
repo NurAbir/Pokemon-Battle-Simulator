@@ -4,7 +4,8 @@ const notificationSchema = new mongoose.Schema({
   notificationId: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    index: true
   },
   recipientId: {
     type: String,
@@ -15,21 +16,15 @@ const notificationSchema = new mongoose.Schema({
   senderId: {
     type: String,
     ref: 'User',
-    default: null // null for system notifications
+    default: null
   },
   type: {
     type: String,
     required: true,
-    enum: ['matchInvite', 'friendRequest', 'battleResult', 'matchInviteResponse', 'friendRequestResponse', 'system'],
-    index: true
+    enum: ['matchInvite', 'friendRequest', 'battleResult', 'friendRequestAccepted', 'friendRequestDenied', 'matchInviteAccepted', 'matchInviteDenied', 'system']
   },
   // Flexible payload for different notification types
-  data: {
-    // matchInvite: { battleMode: 'ranked'|'normal' }
-    // friendRequest: {}
-    // battleResult: { battleId, winnerId, loserId, summary }
-    // matchInviteResponse: { accepted: boolean, originalNotificationId }
-    // friendRequestResponse: { accepted: boolean, originalNotificationId }
+  payload: {
     type: mongoose.Schema.Types.Mixed,
     default: {}
   },
@@ -44,57 +39,81 @@ const notificationSchema = new mongoose.Schema({
   },
   expiresAt: {
     type: Date,
-    default: null // null means no expiration
+    default: null
   }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
 
-// Compound indexes for efficient queries
+// Index for efficient querying
 notificationSchema.index({ recipientId: 1, createdAt: -1 });
 notificationSchema.index({ recipientId: 1, isRead: 1 });
-notificationSchema.index({ senderId: 1, recipientId: 1, type: 1 });
 
-// Check for duplicate pending notification
-notificationSchema.statics.hasPendingNotification = async function(senderId, recipientId, type) {
-  const existing = await this.findOne({
-    senderId,
-    recipientId,
-    type,
-    status: 'pending'
-  });
-  return !!existing;
-};
-
-// Get unread count for user
-notificationSchema.statics.getUnreadCount = async function(userId) {
-  return await this.countDocuments({ recipientId: userId, isRead: false });
-};
-
-// Get notifications for user with pagination
-notificationSchema.statics.getForUser = async function(userId, options = {}) {
-  const { page = 1, limit = 20, unreadOnly = false } = options;
-  const query = { recipientId: userId };
-  
-  if (unreadOnly) {
-    query.isRead = false;
-  }
-
-  return await this.find(query)
-    .sort({ createdAt: -1 })
-    .skip((page - 1) * limit)
-    .limit(limit);
+// Check if notification is expired
+notificationSchema.methods.isExpired = function() {
+  if (!this.expiresAt) return false;
+  return new Date() > this.expiresAt;
 };
 
 // Mark as read
 notificationSchema.methods.markAsRead = async function() {
   this.isRead = true;
-  return await this.save();
+  return this.save();
 };
 
-// Respond to notification (accept/deny)
-notificationSchema.methods.respond = async function(accepted) {
-  this.status = accepted ? 'accepted' : 'denied';
-  this.isRead = true;
-  return await this.save();
+// Static: create match invite notification
+notificationSchema.statics.createMatchInvite = async function(senderId, senderUsername, recipientId, teamId) {
+  const { generateId } = require('../utils/generateId');
+  return this.create({
+    notificationId: generateId('notif'),
+    recipientId,
+    senderId,
+    type: 'matchInvite',
+    payload: {
+      senderUsername,
+      teamId,
+      message: `${senderUsername} has invited you to a battle!`
+    },
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes expiry
+  });
+};
+
+// Static: create friend request notification
+notificationSchema.statics.createFriendRequest = async function(senderId, senderUsername, recipientId, requestId) {
+  const { generateId } = require('../utils/generateId');
+  return this.create({
+    notificationId: generateId('notif'),
+    recipientId,
+    senderId,
+    type: 'friendRequest',
+    payload: {
+      senderUsername,
+      requestId,
+      message: `${senderUsername} sent you a friend request!`
+    }
+  });
+};
+
+// Static: create battle result notification
+notificationSchema.statics.createBattleResult = async function(recipientId, battleData) {
+  const { generateId } = require('../utils/generateId');
+  return this.create({
+    notificationId: generateId('notif'),
+    recipientId,
+    senderId: null,
+    type: 'battleResult',
+    payload: {
+      battleId: battleData.battleId,
+      winner: battleData.winner,
+      winnerUsername: battleData.winnerUsername,
+      loserUsername: battleData.loserUsername,
+      isWinner: battleData.isWinner,
+      summary: battleData.summary,
+      message: battleData.isWinner 
+        ? `You won the battle against ${battleData.opponentUsername}!` 
+        : `You lost the battle against ${battleData.opponentUsername}.`
+    }
+  });
 };
 
 module.exports = mongoose.model('Notification', notificationSchema);

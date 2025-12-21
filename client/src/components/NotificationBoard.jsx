@@ -1,261 +1,177 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import socketService from '../services/socket';
-import API from '../services/api';
-import '../styles/NotificationBoard.css';
+import socketService from '../services/socketService';
+import {
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  respondToMatchInvite,
+  deleteNotification
+} from '../services/api';
+import { respondToFriendRequest } from '../services/api';
+import '../styles/notifications.css';
 
-const NotificationBoard = ({ isOpen, onClose }) => {
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+const NotificationBoard = () => {
   const navigate = useNavigate();
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState('all'); // all, unread, matchInvite, friendRequest, battleResult
+  const [teams, setTeams] = useState([]);
+  const [selectedTeam, setSelectedTeam] = useState(null);
+  const [respondingTo, setRespondingTo] = useState(null);
+
+  // Get user from localStorage
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   // Fetch notifications
   const fetchNotifications = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await API.get('/notifications', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      setLoading(true);
+      const params = {};
+      if (filter === 'unread') params.unreadOnly = 'true';
+      else if (filter !== 'all') params.type = filter;
+      
+      const response = await getNotifications(params);
       if (response.data.success) {
-        setNotifications(response.data.data.notifications);
-        setUnreadCount(response.data.data.unreadCount);
+        setNotifications(response.data.data);
       }
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error);
+    } catch (err) {
+      setError('Failed to load notifications');
+      console.error(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter]);
 
-  // Socket listener for new notifications
-  useEffect(() => {
-    fetchNotifications();
-
-    const handleNewNotification = (notification) => {
-      setNotifications(prev => [notification, ...prev]);
-      setUnreadCount(prev => prev + 1);
-    };
-
-    socketService.on('notification:new', handleNewNotification);
-
-    return () => {
-      socketService.off('notification:new', handleNewNotification);
-    };
-  }, [fetchNotifications]);
-
-  // Handle match invite response
-  const handleMatchInviteResponse = async (notificationId, accept) => {
+  // Fetch user teams for battle acceptance
+  const fetchTeams = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await API.put(
-        `/notifications/${notificationId}/respond-match`,
-        { accept },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      if (response.data.success) {
-        // Update local state
-        setNotifications(prev =>
-          prev.map(n =>
-            n.notificationId === notificationId
-              ? { ...n, status: accept ? 'accepted' : 'denied', isRead: true }
-              : n
-          )
-        );
-        setUnreadCount(prev => Math.max(0, prev - 1));
-
-        // If accepted, navigate to battle
-        if (accept && response.data.data.battle) {
-          onClose();
-          navigate(`/battle/${response.data.data.battle.battleId}`);
+      const response = await fetch('http://localhost:5000/api/teams', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setTeams(data.data);
+        if (data.data.length > 0) {
+          setSelectedTeam(data.data[0].teamId || data.data[0]._id);
         }
       }
-    } catch (error) {
-      console.error('Failed to respond to match invite:', error);
+    } catch (err) {
+      console.error('Failed to fetch teams:', err);
     }
   };
 
-  // Handle friend request response
-  const handleFriendRequestResponse = async (notificationId, accept) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await API.put(
-        `/notifications/${notificationId}/respond-friend`,
-        { accept },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+  useEffect(() => {
+    fetchNotifications();
+    fetchTeams();
+  }, [fetchNotifications]);
 
-      if (response.data.success) {
-        setNotifications(prev =>
-          prev.map(n =>
-            n.notificationId === notificationId
-              ? { ...n, status: accept ? 'accepted' : 'denied', isRead: true }
-              : n
-          )
-        );
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      }
-    } catch (error) {
-      console.error('Failed to respond to friend request:', error);
-    }
-  };
+  // Socket listener for real-time notifications
+  useEffect(() => {
+    const handleNewNotification = (notification) => {
+      setNotifications(prev => [notification, ...prev]);
+    };
+
+    socketService.on('newNotification', handleNewNotification);
+
+    return () => {
+      socketService.off('newNotification', handleNewNotification);
+    };
+  }, []);
 
   // Mark notification as read
-  const markAsRead = async (notificationId) => {
+  const handleMarkRead = async (notificationId) => {
     try {
-      const token = localStorage.getItem('token');
-      await API.put(
-        `/notifications/${notificationId}/read`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
+      await markNotificationRead(notificationId);
       setNotifications(prev =>
-        prev.map(n =>
-          n.notificationId === notificationId ? { ...n, isRead: true } : n
-        )
+        prev.map(n => n.notificationId === notificationId ? { ...n, isRead: true } : n)
       );
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Failed to mark as read:', error);
+    } catch (err) {
+      console.error('Failed to mark as read:', err);
     }
   };
 
   // Mark all as read
-  const markAllAsRead = async () => {
+  const handleMarkAllRead = async () => {
     try {
-      const token = localStorage.getItem('token');
-      await API.put(
-        '/notifications/read-all',
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
+      await markAllNotificationsRead();
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-      setUnreadCount(0);
-    } catch (error) {
-      console.error('Failed to mark all as read:', error);
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
     }
   };
 
-  // Render notification content based on type
-  const renderNotificationContent = (notification) => {
-    const { type, data, status } = notification;
-
-    switch (type) {
-      case 'matchInvite':
-        return (
-          <div className="notification-content">
-            <p><strong>{data.senderUsername}</strong> invited you to a {data.battleMode} battle!</p>
-            {status === 'pending' && (
-              <div className="notification-actions">
-                <button
-                  className="btn-accept"
-                  onClick={() => handleMatchInviteResponse(notification.notificationId, true)}
-                >
-                  Accept
-                </button>
-                <button
-                  className="btn-deny"
-                  onClick={() => handleMatchInviteResponse(notification.notificationId, false)}
-                >
-                  Deny
-                </button>
-              </div>
-            )}
-            {status !== 'pending' && (
-              <span className={`status-badge ${status}`}>{status}</span>
-            )}
-          </div>
-        );
-
-      case 'friendRequest':
-        return (
-          <div className="notification-content">
-            <p><strong>{data.senderUsername}</strong> wants to be your friend!</p>
-            {status === 'pending' && (
-              <div className="notification-actions">
-                <button
-                  className="btn-accept"
-                  onClick={() => handleFriendRequestResponse(notification.notificationId, true)}
-                >
-                  Accept
-                </button>
-                <button
-                  className="btn-deny"
-                  onClick={() => handleFriendRequestResponse(notification.notificationId, false)}
-                >
-                  Deny
-                </button>
-              </div>
-            )}
-            {status !== 'pending' && (
-              <span className={`status-badge ${status}`}>{status}</span>
-            )}
-          </div>
-        );
-
-      case 'matchInviteResponse':
-        return (
-          <div className="notification-content">
-            <p>
-              <strong>{data.responderUsername}</strong>{' '}
-              {data.accepted ? 'accepted' : 'declined'} your battle invite
-            </p>
-          </div>
-        );
-
-      case 'friendRequestResponse':
-        return (
-          <div className="notification-content">
-            <p>
-              <strong>{data.responderUsername}</strong>{' '}
-              {data.accepted ? 'accepted' : 'declined'} your friend request
-            </p>
-          </div>
-        );
-
-      case 'battleResult':
-        return (
-          <div className="notification-content">
-            <p className={data.isWinner ? 'result-win' : 'result-loss'}>
-              {data.isWinner ? '🏆 Victory!' : '💔 Defeat'}
-            </p>
-            <p>
-              {data.isWinner
-                ? `You defeated ${data.loserUsername}!`
-                : `You lost to ${data.winnerUsername}`}
-            </p>
-            {data.summary && <p className="battle-summary">{data.summary}</p>}
-          </div>
-        );
-
-      case 'system':
-        return (
-          <div className="notification-content">
-            <p>{data.message}</p>
-          </div>
-        );
-
-      default:
-        return <p>Unknown notification type</p>;
+  // Handle match invite response
+  const handleMatchInviteResponse = async (notificationId, action) => {
+    try {
+      setRespondingTo(notificationId);
+      
+      if (action === 'accept' && !selectedTeam) {
+        setError('Please select a team first');
+        return;
+      }
+      
+      const response = await respondToMatchInvite(notificationId, {
+        action,
+        teamId: action === 'accept' ? selectedTeam : undefined
+      });
+      
+      if (response.data.success) {
+        if (action === 'accept') {
+          // Navigate to battle or trigger battle flow
+          navigate('/battle', { 
+            state: { 
+              battleSetup: response.data.data 
+            }
+          });
+        } else {
+          // Update notification status
+          setNotifications(prev =>
+            prev.map(n => n.notificationId === notificationId 
+              ? { ...n, status: 'denied', isRead: true } 
+              : n
+            )
+          );
+        }
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to respond');
+    } finally {
+      setRespondingTo(null);
     }
   };
 
-  // Get icon for notification type
-  const getNotificationIcon = (type) => {
-    switch (type) {
-      case 'matchInvite':
-      case 'matchInviteResponse':
-        return '⚔️';
-      case 'friendRequest':
-      case 'friendRequestResponse':
-        return '👥';
-      case 'battleResult':
-        return '🎮';
-      default:
-        return '🔔';
+  // Handle friend request response
+  const handleFriendRequestResponse = async (notificationId, requestId, action) => {
+    try {
+      setRespondingTo(notificationId);
+      
+      const response = await respondToFriendRequest({ requestId, action });
+      
+      if (response.data.success) {
+        setNotifications(prev =>
+          prev.map(n => n.notificationId === notificationId 
+            ? { ...n, status: action === 'accept' ? 'accepted' : 'denied', isRead: true } 
+            : n
+          )
+        );
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to respond');
+    } finally {
+      setRespondingTo(null);
+    }
+  };
+
+  // Delete notification
+  const handleDelete = async (notificationId) => {
+    try {
+      await deleteNotification(notificationId);
+      setNotifications(prev => prev.filter(n => n.notificationId !== notificationId));
+    } catch (err) {
+      console.error('Failed to delete:', err);
     }
   };
 
@@ -264,56 +180,187 @@ const NotificationBoard = ({ isOpen, onClose }) => {
     const date = new Date(timestamp);
     const now = new Date();
     const diff = now - date;
-
+    
     if (diff < 60000) return 'Just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     return date.toLocaleDateString();
   };
 
-  if (!isOpen) return null;
+  // Get notification icon
+  const getIcon = (type) => {
+    switch (type) {
+      case 'matchInvite': return '⚔️';
+      case 'friendRequest': return '👋';
+      case 'battleResult': return '🏆';
+      case 'friendRequestAccepted': return '✅';
+      case 'friendRequestDenied': return '❌';
+      case 'matchInviteAccepted': return '🎮';
+      case 'matchInviteDenied': return '🚫';
+      default: return '📢';
+    }
+  };
+
+  // Render notification content based on type
+  const renderNotificationContent = (notification) => {
+    const { type, payload, status } = notification;
+    
+    switch (type) {
+      case 'matchInvite':
+        return (
+          <div className="notification-content">
+            <p>{payload.message}</p>
+            {status === 'pending' && (
+              <div className="notification-actions">
+                <select 
+                  value={selectedTeam || ''} 
+                  onChange={(e) => setSelectedTeam(e.target.value)}
+                  className="team-select"
+                >
+                  {teams.map(team => (
+                    <option key={team.teamId || team._id} value={team.teamId || team._id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="btn-accept"
+                  onClick={() => handleMatchInviteResponse(notification.notificationId, 'accept')}
+                  disabled={respondingTo === notification.notificationId}
+                >
+                  Accept
+                </button>
+                <button
+                  className="btn-deny"
+                  onClick={() => handleMatchInviteResponse(notification.notificationId, 'deny')}
+                  disabled={respondingTo === notification.notificationId}
+                >
+                  Deny
+                </button>
+              </div>
+            )}
+            {status !== 'pending' && (
+              <span className={`status-badge status-${status}`}>{status}</span>
+            )}
+          </div>
+        );
+      
+      case 'friendRequest':
+        return (
+          <div className="notification-content">
+            <p>{payload.message}</p>
+            {status === 'pending' && (
+              <div className="notification-actions">
+                <button
+                  className="btn-accept"
+                  onClick={() => handleFriendRequestResponse(
+                    notification.notificationId, 
+                    payload.requestId, 
+                    'accept'
+                  )}
+                  disabled={respondingTo === notification.notificationId}
+                >
+                  Accept
+                </button>
+                <button
+                  className="btn-deny"
+                  onClick={() => handleFriendRequestResponse(
+                    notification.notificationId, 
+                    payload.requestId, 
+                    'deny'
+                  )}
+                  disabled={respondingTo === notification.notificationId}
+                >
+                  Deny
+                </button>
+              </div>
+            )}
+            {status !== 'pending' && (
+              <span className={`status-badge status-${status}`}>{status}</span>
+            )}
+          </div>
+        );
+      
+      case 'battleResult':
+        return (
+          <div className="notification-content">
+            <p>{payload.message}</p>
+            <div className="battle-result-summary">
+              <span className={payload.isWinner ? 'result-win' : 'result-loss'}>
+                {payload.isWinner ? '🎉 Victory!' : '😔 Defeat'}
+              </span>
+              {payload.summary && <p className="battle-summary">{payload.summary}</p>}
+            </div>
+          </div>
+        );
+      
+      default:
+        return (
+          <div className="notification-content">
+            <p>{payload?.message || 'Notification'}</p>
+          </div>
+        );
+    }
+  };
 
   return (
-    <div className="notification-board-overlay" onClick={onClose}>
-      <div className="notification-board" onClick={(e) => e.stopPropagation()}>
-        <div className="notification-header">
-          <h3>Notifications {unreadCount > 0 && <span className="badge">{unreadCount}</span>}</h3>
-          <div className="header-actions">
-            {unreadCount > 0 && (
-              <button className="mark-all-read" onClick={markAllAsRead}>
-                Mark all read
-              </button>
-            )}
-            <button className="close-btn" onClick={onClose}>×</button>
-          </div>
-        </div>
-
-        <div className="notification-list">
-          {loading ? (
-            <div className="loading">Loading notifications...</div>
-          ) : notifications.length === 0 ? (
-            <div className="empty">No notifications yet</div>
-          ) : (
-            notifications.map((notification) => (
-              <div
-                key={notification.notificationId}
-                className={`notification-item ${!notification.isRead ? 'unread' : ''}`}
-                onClick={() => !notification.isRead && markAsRead(notification.notificationId)}
-              >
-                <div className="notification-icon">
-                  {getNotificationIcon(notification.type)}
-                </div>
-                <div className="notification-body">
-                  {renderNotificationContent(notification)}
-                  <span className="notification-time">
-                    {formatTime(notification.createdAt)}
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
+    <div className="notification-board">
+      <div className="notification-header">
+        <h2>Notifications</h2>
+        <div className="notification-controls">
+          <select 
+            value={filter} 
+            onChange={(e) => setFilter(e.target.value)}
+            className="filter-select"
+          >
+            <option value="all">All</option>
+            <option value="unread">Unread</option>
+            <option value="matchInvite">Battle Invites</option>
+            <option value="friendRequest">Friend Requests</option>
+            <option value="battleResult">Battle Results</option>
+          </select>
+          <button onClick={handleMarkAllRead} className="btn-mark-all">
+            Mark All Read
+          </button>
+          <button onClick={() => navigate('/dashboard')} className="btn-back">
+            Back
+          </button>
         </div>
       </div>
+
+      {error && <div className="notification-error">{error}</div>}
+
+      {loading ? (
+        <div className="notification-loading">Loading...</div>
+      ) : notifications.length === 0 ? (
+        <div className="notification-empty">No notifications</div>
+      ) : (
+        <div className="notification-list">
+          {notifications.map(notification => (
+            <div
+              key={notification.notificationId}
+              className={`notification-item ${!notification.isRead ? 'unread' : ''}`}
+              onClick={() => !notification.isRead && handleMarkRead(notification.notificationId)}
+            >
+              <div className="notification-icon">{getIcon(notification.type)}</div>
+              <div className="notification-body">
+                <div className="notification-type">{notification.type.replace(/([A-Z])/g, ' $1').trim()}</div>
+                {renderNotificationContent(notification)}
+                <div className="notification-time">{formatTime(notification.createdAt)}</div>
+              </div>
+              <button
+                className="btn-delete"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(notification.notificationId);
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

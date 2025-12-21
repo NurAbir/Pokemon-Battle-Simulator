@@ -1277,6 +1277,63 @@
     background: rgba(255, 255, 255, 0.5);
 }
 
+.btn-save-teams {
+    width: 100%;
+    padding: 14px;
+    margin-bottom: 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: linear-gradient(135deg, #7B3FF2, #410056);
+    color: white;
+    box-shadow: 0 4px 12px rgba(123, 63, 242, 0.3);
+}
+
+.btn-save-teams:hover:not(:disabled) {
+    background: linear-gradient(135deg, #6A2FD9, #310046);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(123, 63, 242, 0.5);
+}
+
+.btn-save-teams:active {
+    transform: translateY(0);
+}
+
+.btn-save-teams:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-save-teams.saving {
+    background: linear-gradient(135deg, #9D5FFF, #6A2FD9);
+    animation: pulse 1s infinite;
+}
+
+.btn-save-teams.saved {
+    background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+    animation: success-bounce 0.5s ease;
+}
+
+.btn-save-teams.error {
+    background: linear-gradient(135deg, #DC2626, #991B1B);
+    animation: shake 0.5s ease;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+@keyframes success-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+}
+
 /* Responsive Design */
 @media (max-width: 1024px) {
     .team-builder-wrapper {
@@ -1327,4 +1384,5 @@
     .spreads-buttons {
         grid-template-columns: 1fr;
     }
+
 }

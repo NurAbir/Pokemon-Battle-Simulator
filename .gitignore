@@ -1,10 +1,5 @@
 node_modules/
 .env
-uploads/*
-!uploads/.gitkeep
-!uploads/avatars/
-uploads/avatars/*
-!uploads/avatars/.gitkeep
+uploads/
 *.log
 .DS_Store
-*.docx

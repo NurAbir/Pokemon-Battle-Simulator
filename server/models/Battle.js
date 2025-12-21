@@ -1,80 +1,109 @@
+// models/Battle.js
 const mongoose = require('mongoose');
+
+const battlePokemonSchema = new mongoose.Schema({
+  pokemonId: { type: Number, required: true },
+  name: { type: String, required: true },
+  nickname: { type: String, required: true },
+  level: { type: Number, required: true },
+  types: [String],
+  currentHp: { type: Number, required: true },
+  maxHp: { type: Number, required: true },
+  stats: {
+    atk: Number,
+    def: Number,
+    spa: Number,
+    spd: Number,
+    spe: Number
+  },
+  moves: [String],
+  statusCondition: { type: String, default: null },
+  statStages: {
+    atk: { type: Number, default: 0 },
+    def: { type: Number, default: 0 },
+    spa: { type: Number, default: 0 },
+    spd: { type: Number, default: 0 },
+    spe: { type: Number, default: 0 },
+    accuracy: { type: Number, default: 0 },
+    evasion: { type: Number, default: 0 }
+  },
+  fainted: { type: Boolean, default: false }
+});
+
+const playerSchema = new mongoose.Schema({
+  userId: { 
+    type: String,  // CHANGED: Use String instead of ObjectId
+    required: true 
+  },
+  username: { type: String, required: true },
+  team: [battlePokemonSchema],
+  activePokemonIndex: { type: Number, default: 0 },
+  selectedMove: { type: String, default: null },
+  switchTo: { type: Number, default: null },
+  ready: { type: Boolean, default: false }
+});
 
 const battleSchema = new mongoose.Schema({
   battleId: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    index: true
   },
-  player1Id: {
+  players: {
+    type: [playerSchema],
+    validate: {
+      validator: function(v) {
+        return v.length === 2;
+      },
+      message: 'Battle must have exactly 2 players'
+    }
+  },
+  status: {
     type: String,
-    required: true,
-    ref: 'User'
+    enum: ['active', 'completed', 'forfeit'],
+    default: 'active'
   },
-  player2Id: {
-    type: String,
-    required: true,
-    ref: 'User'
+  turn: { type: Number, default: 1 },
+  winner: { 
+    type: String,  // CHANGED: Use String instead of ObjectId
+    default: null 
   },
-  battleStatus: {
-    type: String,
-    required: true,
-    enum: ['waiting', 'in_progress', 'completed', 'forfeited'],
-    default: 'waiting'
-  },
-  startTime: {
-    type: Date,
-    default: Date.now
-  },
-  endTime: {
-    type: Date,
-    default: null
-  },
-  winnerId: {
-    type: String,
-    default: null,
-    ref: 'User'
+  battleLog: [String]
+}, {
+  timestamps: true
+});
+
+// Helper method to add log entry
+battleSchema.methods.addLog = function(message) {
+  this.battleLog.push(message);
+};
+
+// Helper method to get active Pokemon for a player
+battleSchema.methods.getActivePokemon = function(playerIndex) {
+  const player = this.players[playerIndex];
+  return player.team[player.activePokemonIndex];
+};
+
+// Helper method to check if battle has ended
+battleSchema.methods.checkBattleEnd = function() {
+  for (let i = 0; i < 2; i++) {
+    const player = this.players[i];
+    const hasAlivePokemon = player.team.some(p => !p.fainted);
+    
+    if (!hasAlivePokemon) {
+      this.status = 'completed';
+      this.winner = this.players[1 - i].userId;
+      this.addLog(`${this.players[1 - i].username} wins the battle!`);
+      return true;
+    }
   }
-}, { timestamps: true });
-
-// Start battle
-battleSchema.methods.startBattle = async function() {
-  this.battleStatus = 'in_progress';
-  this.startTime = new Date();
-  await this.save();
+  return false;
 };
 
-// Execute turn
-battleSchema.methods.executeTurn = async function(playerId, moveId) {
-  // Battle logic here
-  console.log(`Player ${playerId} used move ${moveId}`);
-};
-
-// End battle
-battleSchema.methods.endBattle = async function(winnerId) {
-  this.battleStatus = 'completed';
-  this.endTime = new Date();
-  this.winnerId = winnerId;
-  await this.save();
-  
-  // Update statistics for both players
-  const Statistics = mongoose.model('Statistics');
-  await Statistics.findOneAndUpdate(
-    { userId: this.player1Id },
-    { $inc: { totalBattles: 1 } }
-  );
-  await Statistics.findOneAndUpdate(
-    { userId: this.player2Id },
-    { $inc: { totalBattles: 1 } }
-  );
-};
-
-// Forfeit
-battleSchema.methods.forfeit = async function(playerId) {
-  this.battleStatus = 'forfeited';
-  this.endTime = new Date();
-  this.winnerId = playerId === this.player1Id ? this.player2Id : this.player1Id;
-  await this.save();
-};
+// Add indexes for better query performance
+battleSchema.index({ 'players.userId': 1 });
+battleSchema.index({ status: 1 });
+battleSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Battle', battleSchema);

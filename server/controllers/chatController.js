@@ -1,61 +1,25 @@
 const ChatRoom = require('../models/ChatRoom');
 const Message = require('../models/Message');
 const User = require('../models/User');
-const generateId = require('../utils/generateId');
 
-// Get chat history for a room
-exports.getChatHistory = async (req, res) => {
-  try {
-    const { roomId } = req.params;
-    const { limit = 50, before } = req.query;
-    const userId = req.user.userId;
-
-    const room = await ChatRoom.findOne({ roomId });
-    if (!room) {
-      return res.status(404).json({ success: false, message: 'Chat room not found' });
-    }
-
-    // Authorization check (skip for global chat)
-    if (room.type !== 'global' && !room.participants.includes(userId)) {
-      return res.status(403).json({ success: false, message: 'Not authorized to view this chat' });
-    }
-
-    const messages = await Message.getForRoom(roomId, {
-      limit: parseInt(limit),
-      before
-    });
-
-    // Reset unread count for private chats
-    if (room.type === 'private') {
-      await room.resetUnread(userId);
-    }
-
-    res.json({
-      success: true,
-      data: {
-        room,
-        messages: messages.reverse() // Return in chronological order
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Get global chat room
+// Get or create global chat room
 exports.getGlobalChat = async (req, res) => {
   try {
     const room = await ChatRoom.getGlobalRoom();
-    const messages = await Message.getForRoom(room.roomId, { limit: 50 });
-
+    const messages = await Message.getRoomMessages(room.roomId, 50);
+    
     res.json({
       success: true,
       data: {
-        room,
-        messages: messages.reverse()
+        room: {
+          roomId: room.roomId,
+          type: room.type
+        },
+        messages: messages.reverse() // Chronological order
       }
     });
   } catch (error) {
+    console.error('Get global chat error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -63,81 +27,36 @@ exports.getGlobalChat = async (req, res) => {
 // Get or create private chat with another user
 exports.getPrivateChat = async (req, res) => {
   try {
-    const { targetUsername } = req.params;
-    const userId = req.user.userId;
-
-    // Find target user
-    const targetUser = await User.findOne({ username: targetUsername });
+    const { userId } = req.params;
+    
+    // Verify target user exists
+    const targetUser = await User.findOne({ userId }).select('userId username');
     if (!targetUser) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-
-    // Cannot chat with yourself
-    if (targetUser.userId === userId) {
-      return res.status(400).json({ success: false, message: 'Cannot chat with yourself' });
-    }
-
-    const room = await ChatRoom.findOrCreatePrivate(userId, targetUser.userId);
-    const messages = await Message.getForRoom(room.roomId, { limit: 50 });
-
-    // Reset unread count
-    await room.resetUnread(userId);
-
+    
+    const room = await ChatRoom.getPrivateRoom(req.user.userId, userId);
+    const messages = await Message.getRoomMessages(room.roomId, 50);
+    
+    // Mark messages as read
+    await Message.updateMany(
+      { roomId: room.roomId, senderId: { $ne: req.user.userId } },
+      { $addToSet: { readBy: req.user.userId } }
+    );
+    
     res.json({
       success: true,
       data: {
-        room,
-        targetUser: {
-          userId: targetUser.userId,
-          username: targetUser.username,
-          avatar: targetUser.avatar,
-          isOnline: targetUser.isOnline
+        room: {
+          roomId: room.roomId,
+          type: room.type,
+          participant: targetUser
         },
         messages: messages.reverse()
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Get user's private chat list
-exports.getPrivateChats = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-
-    const rooms = await ChatRoom.find({
-      type: 'private',
-      participants: userId,
-      isActive: true
-    }).sort({ lastMessageAt: -1 });
-
-    // Enrich with participant info and unread counts
-    const enrichedRooms = await Promise.all(rooms.map(async (room) => {
-      const otherUserId = room.participants.find(p => p !== userId);
-      const otherUser = await User.findOne({ userId: otherUserId });
-      const lastMessage = await Message.findOne({ roomId: room.roomId })
-        .sort({ createdAt: -1 });
-
-      return {
-        roomId: room.roomId,
-        participant: otherUser ? {
-          userId: otherUser.userId,
-          username: otherUser.username,
-          avatar: otherUser.avatar,
-          isOnline: otherUser.isOnline
-        } : null,
-        unreadCount: room.unreadCounts.get(userId) || 0,
-        lastMessage: lastMessage ? {
-          content: lastMessage.content,
-          createdAt: lastMessage.createdAt,
-          isSystem: lastMessage.isSystem
-        } : null
-      };
-    }));
-
-    res.json({ success: true, data: enrichedRooms });
-  } catch (error) {
+    console.error('Get private chat error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -146,111 +65,142 @@ exports.getPrivateChats = async (req, res) => {
 exports.getBattleChat = async (req, res) => {
   try {
     const { battleId } = req.params;
-    const userId = req.user.userId;
-
-    const room = await ChatRoom.findOne({ battleId, type: 'battle' });
+    
+    const room = await ChatRoom.getBattleRoom(battleId);
+    
     if (!room) {
       return res.status(404).json({ success: false, message: 'Battle chat not found' });
     }
-
-    // Check authorization
-    if (!room.participants.includes(userId)) {
+    
+    // Verify user is participant
+    if (!room.isParticipant(req.user.userId)) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
-
-    const messages = await Message.getForRoom(room.roomId, { limit: 100 });
-
+    
+    const messages = await Message.getRoomMessages(room.roomId, 100);
+    
     res.json({
       success: true,
       data: {
-        room,
+        room: {
+          roomId: room.roomId,
+          type: room.type,
+          battleId: room.battleId
+        },
         messages: messages.reverse()
       }
     });
   } catch (error) {
+    console.error('Get battle chat error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Send message (HTTP fallback - primary is socket)
-exports.sendMessage = async (req, res) => {
+// Get chat history with pagination
+exports.getChatHistory = async (req, res) => {
   try {
     const { roomId } = req.params;
-    const { content } = req.body;
-    const userId = req.user.userId;
-    const username = req.user.username;
-
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({ success: false, message: 'Message cannot be empty' });
-    }
-
-    if (content.length > 1000) {
-      return res.status(400).json({ success: false, message: 'Message too long' });
-    }
-
+    const { limit = 50, before } = req.query;
+    
     const room = await ChatRoom.findOne({ roomId });
+    
     if (!room) {
       return res.status(404).json({ success: false, message: 'Chat room not found' });
     }
-
-    // Authorization check (skip for global)
-    if (room.type !== 'global' && !room.participants.includes(userId)) {
+    
+    // Verify access
+    if (!room.isParticipant(req.user.userId)) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
-
-    // Check if room is active (for battle chats)
-    if (!room.isActive) {
-      return res.status(400).json({ success: false, message: 'Chat room is no longer active' });
-    }
-
-    // Create message
-    const message = new Message({
-      messageId: generateId('msg'),
-      roomId,
-      senderId: userId,
-      senderUsername: username,
-      content: content.trim()
+    
+    const beforeDate = before ? new Date(before) : null;
+    const messages = await Message.getRoomMessages(
+      roomId, 
+      parseInt(limit), 
+      beforeDate
+    );
+    
+    res.json({
+      success: true,
+      data: {
+        messages: messages.reverse(),
+        hasMore: messages.length === parseInt(limit)
+      }
     });
-
-    // Moderate content
-    message.moderate();
-    await message.save();
-
-    // Update room's last message timestamp
-    room.lastMessageAt = new Date();
-
-    // Update unread counts for private chats
-    if (room.type === 'private') {
-      const otherUserId = room.participants.find(p => p !== userId);
-      await room.incrementUnread(otherUserId);
-    }
-
-    await room.save();
-
-    // Emit via socket
-    const io = req.app.get('io');
-    if (io) {
-      io.to(`chat:${roomId}`).emit('chat:message', message);
-    }
-
-    res.status(201).json({ success: true, data: message });
   } catch (error) {
+    console.error('Get chat history error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Create battle chat room (called internally when battle starts)
-exports.createBattleChatRoom = async (battleId, participants) => {
-  return await ChatRoom.createBattleRoom(battleId, participants);
-};
-
-// Archive battle chat room (called internally when battle ends)
-exports.archiveBattleChatRoom = async (battleId) => {
-  const room = await ChatRoom.findOne({ battleId, type: 'battle' });
-  if (room) {
-    await room.archive();
+// Get user's private chat list
+exports.getPrivateChatList = async (req, res) => {
+  try {
+    const rooms = await ChatRoom.find({
+      type: 'private',
+      participants: req.user.userId
+    }).sort({ lastActivity: -1 });
+    
+    const chatList = await Promise.all(
+      rooms.map(async (room) => {
+        // Get the other participant
+        const otherUserId = room.participants.find(p => p !== req.user.userId);
+        const otherUser = await User.findOne({ userId: otherUserId })
+          .select('userId username avatar isOnline');
+        
+        // Get last message
+        const [lastMessage] = await Message.find({ roomId: room.roomId })
+          .sort({ createdAt: -1 })
+          .limit(1)
+          .lean();
+        
+        // Get unread count
+        const unreadCount = await Message.countUnread(room.roomId, req.user.userId);
+        
+        return {
+          roomId: room.roomId,
+          participant: otherUser,
+          lastMessage: lastMessage ? {
+            content: lastMessage.content,
+            senderUsername: lastMessage.senderUsername,
+            createdAt: lastMessage.createdAt
+          } : null,
+          unreadCount,
+          lastActivity: room.lastActivity
+        };
+      })
+    );
+    
+    res.json({ success: true, data: chatList });
+  } catch (error) {
+    console.error('Get private chat list error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
-  return room;
 };
 
-module.exports = exports;
+// Mark room messages as read
+exports.markRoomAsRead = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    
+    const room = await ChatRoom.findOne({ roomId });
+    
+    if (!room) {
+      return res.status(404).json({ success: false, message: 'Chat room not found' });
+    }
+    
+    if (!room.isParticipant(req.user.userId)) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    
+    await Message.updateMany(
+      { roomId, senderId: { $ne: req.user.userId } },
+      { $addToSet: { readBy: req.user.userId } }
+    );
+    
+    res.json({ success: true, message: 'Messages marked as read' });
+  } catch (error) {
+    console.error('Mark room as read error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
