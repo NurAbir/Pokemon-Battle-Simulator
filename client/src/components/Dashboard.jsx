@@ -51,8 +51,7 @@ const Dashboard = () => {
   };
 
   const handlePlay = () => {
-    // Future implementation
-    console.log(`Starting ${selectedMode} battle...`);
+    navigate('/battle');
   };
 
   return (
