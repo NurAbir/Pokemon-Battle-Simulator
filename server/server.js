@@ -1,11 +1,14 @@
+// server.js
 const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
-const http = require('http');
-const { Server } = require('socket.io');
 const connectDB = require('./config/database');
-const { initializeSocket } = require('./socket/socketHandler');
+const battleHandler = require('./sockets/battleHandler');
+const notificationHandler = require('./sockets/notificationHandler');
+const chatHandler = require('./sockets/chatHandler');
 
 // Load env vars
 dotenv.config();
@@ -15,12 +18,10 @@ connectDB();
 
 // Initialize app
 const app = express();
-
-// Create HTTP server for Socket.IO
 const server = http.createServer(app);
 
-// Initialize Socket.IO with CORS
-const io = new Server(server, {
+// Socket.IO setup with CORS
+const io = socketIo(server, {
   cors: {
     origin: process.env.CLIENT_URL || 'http://localhost:3000',
     methods: ['GET', 'POST'],
@@ -28,10 +29,7 @@ const io = new Server(server, {
   }
 });
 
-// Initialize socket handlers
-initializeSocket(io);
-
-// Make io accessible in routes via req.app.get('io')
+// Make io available to routes
 app.set('io', io);
 
 // Middleware
@@ -48,19 +46,38 @@ app.set('views', path.join(__dirname, '../views'));
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const teamRoutes = require('./routes/team');
+const battleRoutes = require('./routes/battleRoutes');
 const notificationRoutes = require('./routes/notification');
+const friendRoutes = require('./routes/friend');
 const chatRoutes = require('./routes/chat');
-const battleLogRoutes = require('./routes/battleLog');
-const healthRoutes = require('./routes/health');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
-app.use('/api/team', teamRoutes);
+app.use('/api/teams', teamRoutes);
+app.use('/api/battles', battleRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/friends', friendRoutes);
 app.use('/api/chat', chatRoutes);
-app.use('/api/battle-log', battleLogRoutes);
-app.use('/api/health', healthRoutes);
+
+// Initialize socket handlers
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+  
+  // Register notification socket events
+  notificationHandler(io, socket);
+  
+  // Register chat socket events
+  chatHandler(io, socket);
+});
+
+// Initialize battle handler (has its own io.on('connection'))
+battleHandler(io);
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', message: 'Server is running' });
+});
 
 // 404 handler
 app.use((req, res) => {
@@ -73,10 +90,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: err.message });
 });
 
-// Start server (use server.listen for Socket.IO)
+// Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Socket.IO enabled`);
+  console.log(`Socket.IO server ready for connections`);
 });
+
+module.exports = { io }; 
