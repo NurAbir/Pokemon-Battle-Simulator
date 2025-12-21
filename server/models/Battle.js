@@ -2,13 +2,13 @@
 const mongoose = require('mongoose');
 
 const battlePokemonSchema = new mongoose.Schema({
-  pokemonId: String,
-  name: String,
-  nickname: String,
-  level: Number,
+  pokemonId: { type: Number, required: true },
+  name: { type: String, required: true },
+  nickname: { type: String, required: true },
+  level: { type: Number, required: true },
   types: [String],
-  currentHp: Number,
-  maxHp: Number,
+  currentHp: { type: Number, required: true },
+  maxHp: { type: Number, required: true },
   stats: {
     atk: Number,
     def: Number,
@@ -17,35 +17,29 @@ const battlePokemonSchema = new mongoose.Schema({
     spe: Number
   },
   moves: [String],
-  statusCondition: {
-    type: String,
-    enum: ['burn', 'paralysis', 'poison', 'sleep', 'freeze', null],
-    default: null
-  },
+  statusCondition: { type: String, default: null },
   statStages: {
-    atk: { type: Number, default: 0, min: -6, max: 6 },
-    def: { type: Number, default: 0, min: -6, max: 6 },
-    spa: { type: Number, default: 0, min: -6, max: 6 },
-    spd: { type: Number, default: 0, min: -6, max: 6 },
-    spe: { type: Number, default: 0, min: -6, max: 6 },
-    accuracy: { type: Number, default: 0, min: -6, max: 6 },
-    evasion: { type: Number, default: 0, min: -6, max: 6 }
+    atk: { type: Number, default: 0 },
+    def: { type: Number, default: 0 },
+    spa: { type: Number, default: 0 },
+    spd: { type: Number, default: 0 },
+    spe: { type: Number, default: 0 },
+    accuracy: { type: Number, default: 0 },
+    evasion: { type: Number, default: 0 }
   },
   fainted: { type: Boolean, default: false }
 });
 
 const playerSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+  userId: { 
+    type: String,  // CHANGED: Use String instead of ObjectId
+    required: true 
   },
-  username: String,
+  username: { type: String, required: true },
   team: [battlePokemonSchema],
   activePokemonIndex: { type: Number, default: 0 },
-  selectedMove: String,
-  selectedTarget: Number,
-  switchTo: Number,
+  selectedMove: { type: String, default: null },
+  switchTo: { type: Number, default: null },
   ready: { type: Boolean, default: false }
 });
 
@@ -53,54 +47,63 @@ const battleSchema = new mongoose.Schema({
   battleId: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    index: true
   },
-  players: [playerSchema],
+  players: {
+    type: [playerSchema],
+    validate: {
+      validator: function(v) {
+        return v.length === 2;
+      },
+      message: 'Battle must have exactly 2 players'
+    }
+  },
   status: {
     type: String,
-    enum: ['waiting', 'active', 'completed'],
-    default: 'waiting'
+    enum: ['active', 'completed', 'forfeit'],
+    default: 'active'
   },
   turn: { type: Number, default: 1 },
-  winner: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+  winner: { 
+    type: String,  // CHANGED: Use String instead of ObjectId
+    default: null 
   },
-  battleLog: [{
-    turn: Number,
-    message: String,
-    timestamp: { type: Date, default: Date.now }
-  }],
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  battleLog: [String]
+}, {
+  timestamps: true
 });
 
-// Add log entry
+// Helper method to add log entry
 battleSchema.methods.addLog = function(message) {
-  this.battleLog.push({
-    turn: this.turn,
-    message: message,
-    timestamp: new Date()
-  });
+  this.battleLog.push(message);
 };
 
-// Get active Pokemon for a player
+// Helper method to get active Pokemon for a player
 battleSchema.methods.getActivePokemon = function(playerIndex) {
   const player = this.players[playerIndex];
   return player.team[player.activePokemonIndex];
 };
 
-// Check if battle is over
+// Helper method to check if battle has ended
 battleSchema.methods.checkBattleEnd = function() {
-  for (let i = 0; i < this.players.length; i++) {
-    const allFainted = this.players[i].team.every(p => p.fainted);
-    if (allFainted) {
+  for (let i = 0; i < 2; i++) {
+    const player = this.players[i];
+    const hasAlivePokemon = player.team.some(p => !p.fainted);
+    
+    if (!hasAlivePokemon) {
       this.status = 'completed';
       this.winner = this.players[1 - i].userId;
+      this.addLog(`${this.players[1 - i].username} wins the battle!`);
       return true;
     }
   }
   return false;
 };
+
+// Add indexes for better query performance
+battleSchema.index({ 'players.userId': 1 });
+battleSchema.index({ status: 1 });
+battleSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Battle', battleSchema);

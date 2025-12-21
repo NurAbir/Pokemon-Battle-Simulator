@@ -7,57 +7,110 @@ class BattleEngine {
   
   // Create new battle
   static async createBattle(player1, player2, battleId) {
-    const battle = new Battle({
-      battleId,
-      players: [
-        {
-          userId: player1.userId,
-          username: player1.username,
-          team: player1.team.map(p => this.initializePokemon(p)),
-          activePokemonIndex: 0
-        },
-        {
-          userId: player2.userId,
-          username: player2.username,
-          team: player2.team.map(p => this.initializePokemon(p)),
-          activePokemonIndex: 0
-        }
-      ],
-      status: 'active'
-    });
-    
-    await battle.save();
-    battle.addLog(`Battle started between ${player1.username} and ${player2.username}!`);
-    await battle.save();
-    
-    return battle;
+    try {
+      console.log('Creating battle with players:', {
+        player1: player1.username,
+        player2: player2.username,
+        team1Count: player1.team?.length,
+        team2Count: player2.team?.length
+      });
+
+      // Validate teams
+      if (!player1.team || player1.team.length === 0) {
+        throw new Error(`Player ${player1.username} has no Pokemon`);
+      }
+      if (!player2.team || player2.team.length === 0) {
+        throw new Error(`Player ${player2.username} has no Pokemon`);
+      }
+
+      const battle = new Battle({
+        battleId,
+        players: [
+          {
+            userId: player1.userId,
+            username: player1.username,
+            team: player1.team.map(p => this.initializePokemon(p)),
+            activePokemonIndex: 0
+          },
+          {
+            userId: player2.userId,
+            username: player2.username,
+            team: player2.team.map(p => this.initializePokemon(p)),
+            activePokemonIndex: 0
+          }
+        ],
+        status: 'active'
+      });
+      
+      await battle.save();
+      battle.addLog(`Battle started between ${player1.username} and ${player2.username}!`);
+      
+      const p1Active = battle.players[0].team[0];
+      const p2Active = battle.players[1].team[0];
+      battle.addLog(`${player1.username}'s ${p1Active.nickname} vs ${player2.username}'s ${p2Active.nickname}!`);
+      
+      await battle.save();
+      
+      console.log('✓ Battle created successfully:', battleId);
+      return battle;
+    } catch (error) {
+      console.error('Battle creation error:', error);
+      throw error;
+    }
   }
   
   // Initialize Pokemon for battle
   static initializePokemon(pokemon) {
-    return {
-      pokemonId: pokemon.id,
-      name: pokemon.name,
-      nickname: pokemon.nickname || pokemon.name,
-      level: pokemon.level,
-      types: pokemon.types,
-      currentHp: pokemon.calculatedStats.hp,
-      maxHp: pokemon.calculatedStats.hp,
-      stats: {
-        atk: pokemon.calculatedStats.atk,
-        def: pokemon.calculatedStats.def,
-        spa: pokemon.calculatedStats.spa,
-        spd: pokemon.calculatedStats.spd,
-        spe: pokemon.calculatedStats.spe
-      },
-      moves: pokemon.moves,
-      statusCondition: null,
-      statStages: {
-        atk: 0, def: 0, spa: 0, spd: 0, spe: 0,
-        accuracy: 0, evasion: 0
-      },
-      fainted: false
-    };
+    try {
+      // Check if pokemon is null or undefined
+      if (!pokemon) {
+        console.error('Pokemon is null or undefined');
+        throw new Error('Pokemon data is missing');
+      }
+
+      // Log the pokemon structure to debug
+      console.log('Initializing Pokemon:', {
+        id: pokemon.id,
+        name: pokemon.name,
+        hasCalculatedStats: !!pokemon.calculatedStats,
+        hasBaseStats: !!pokemon.baseStats
+      });
+
+      // Handle different possible data structures
+      const stats = pokemon.calculatedStats || pokemon.stats || pokemon.baseStats;
+      
+      if (!stats) {
+        console.error('Pokemon missing stats:', pokemon);
+        throw new Error(`Pokemon ${pokemon.name || 'unknown'} is missing stats`);
+      }
+
+      return {
+        pokemonId: pokemon.id || pokemon.pokemonId || pokemon._id,
+        name: pokemon.name || 'Unknown',
+        nickname: pokemon.nickname || pokemon.name || 'Unknown',
+        level: pokemon.level || 50,
+        types: pokemon.types || ['Normal'],
+        currentHp: stats.hp || 100,
+        maxHp: stats.hp || 100,
+        stats: {
+          atk: stats.atk || stats.attack || 50,
+          def: stats.def || stats.defense || 50,
+          spa: stats.spa || stats.spAttack || stats.specialAttack || 50,
+          spd: stats.spd || stats.spDefense || stats.specialDefense || 50,
+          spe: stats.spe || stats.speed || 50
+        },
+        moves: pokemon.moves || [],
+        statusCondition: null,
+        statStages: {
+          atk: 0, def: 0, spa: 0, spd: 0, spe: 0,
+          accuracy: 0, evasion: 0
+        },
+        fainted: false
+      };
+    } catch (error) {
+      console.error('Error initializing Pokemon:', error, pokemon);
+      throw error;
+    }
   }
   
   // Process turn

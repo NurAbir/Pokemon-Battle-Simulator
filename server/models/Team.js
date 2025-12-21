@@ -51,19 +51,27 @@ const pokemonSchema = new mongoose.Schema({
 });
 
 const teamSchema = new mongoose.Schema({
+    teamId: {
+        type: String,
+        required: true,
+        unique: true
+    },
     name: {
         type: String,
         required: true,
         trim: true
     },
     userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+        type: String,  // CHANGED: Use String instead of ObjectId
+        required: true,
+        index: true    // Add index for faster queries
     },
     pokemons: [pokemonSchema]
 }, {
     timestamps: true
 });
+
+// Add compound index for efficient userId + teamId queries
+teamSchema.index({ userId: 1, teamId: 1 });
 
 module.exports = mongoose.model('Team', teamSchema);
