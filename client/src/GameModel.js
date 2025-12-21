@@ -2,7 +2,7 @@
 
 export const findMatch = async () => {
   try {
-    const res = await fetch('http://localhost:5000/api/users/random'); 
+    const res = await fetch('http://localhost:1164/api/users/random'); 
     if (!res.ok) throw new Error("Matchmaking failed");
     
     const user = await res.json();
@@ -31,7 +31,7 @@ export const submitReport = async (targetUserId, reporterName, reason) => {
   }
   
   try {
-    const res = await fetch(`http://localhost:5000/api/users/${targetUserId}/report`, {
+    const res = await fetch(`http://localhost:1164/api/users/${targetUserId}/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reportedBy: reporterName, reason })
@@ -46,7 +46,7 @@ export const submitReport = async (targetUserId, reporterName, reason) => {
 // NEW: Function to fetch random Pokémon cards
 export const fetchPokemonDeck = async (count = 3) => {
   try {
-    const res = await fetch(`http://localhost:5000/api/pokemon/random/${count}`); 
+    const res = await fetch(`http://localhost:1164/api/pokemon/random/${count}`); 
     if (!res.ok) throw new Error("Failed to fetch Pokemon deck");
     
     const deck = await res.json();
