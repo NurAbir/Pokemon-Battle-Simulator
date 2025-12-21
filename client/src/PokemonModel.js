@@ -17,7 +17,7 @@ export const PokemonModel = () => {
 
   const fetchItems = async () => {
     try {
-      const res = await fetch('http://localhost:1164/api/pokemon');
+      const res = await fetch('http://localhost:5000/api/pokemon');
       const data = await res.json();
       if (Array.isArray(data)) setItems(data);
     } catch (err) { console.error("Fetch error", err); }
@@ -37,7 +37,7 @@ export const PokemonModel = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const isEdit = !!editingItem;
-    const url = isEdit ? `http://localhost:1164/api/pokemon/${editingItem._id}` : 'http://localhost:1164/api/pokemon';
+    const url = isEdit ? `http://localhost:5000/api/pokemon/${editingItem._id}` : 'http://localhost:5000/api/pokemon';
     
     try {
       const res = await fetch(url, {
@@ -65,7 +65,7 @@ export const PokemonModel = () => {
 const handleDelete = async (id) => {
     try {
       // API call to delete the entity
-      const res = await fetch(`http://localhost:1164/api/pokemon/${id}`, {
+      const res = await fetch(`http://localhost:5000/api/pokemon/${id}`, {
         method: 'DELETE',
       });
       

@@ -1,7 +1,7 @@
 /* useAdminController.js - The Logic Layer */
 import { useState, useEffect, useRef } from 'react';
 import { useAnimation } from 'framer-motion';
-import { fetchInitialUsers, generateUser, banUser, dismissReport } from './AdminModel';
+import { fetchInitialUsers, generateUser, banUser, dismissReport, updateUserElo } from './AdminModel';
 
 export const useAdminController = (avatars, audio) => {
   const [users, setUsers] = useState([]);
@@ -10,6 +10,7 @@ export const useAdminController = (avatars, audio) => {
   const [uptime, setUptime] = useState(0);
   const [banFlash, setBanFlash] = useState(false);
   const panelControls = useAnimation();
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
     const loadData = async () => {
@@ -68,20 +69,38 @@ export const useAdminController = (avatars, audio) => {
     }, 800);
   };
 
-const handleDismiss = async (id) => {
-    setSelectedUser(null); // Close the modal
-    audio.playSound('check'); 
-
-    // Call the backend API to dismiss the report (resets status to 'safe')
-    const updatedUser = await dismissReport(id);
-
+  const handleUpdateElo = async (userId, newElo) => {
+    const updatedUser = await updateUserElo(userId, newElo);
     if (updatedUser) {
-      // Update the user list with the new 'safe' status
-      setUsers(prev => prev.map(u => 
-        u.id === id ? updatedUser : u 
-      ));
+      setUsers(prev => prev.map(u => u._id === userId ? { ...u, reportData: { ...u.reportData, ELO: newElo.toString() } } : u));
+      audio.playSound('check'); // Feedback sound
     }
   };
+
+  const handleDismiss = async (id) => {
+      setSelectedUser(null); // Close the modal
+      audio.playSound('check'); 
+
+      // Call the backend API to dismiss the report (resets status to 'safe')
+      const updatedUser = await dismissReport(id);
+
+      if (updatedUser) {
+        // Update the user list with the new 'safe' status
+        setUsers(prev => prev.map(u => 
+          u.id === id ? updatedUser : u 
+        ));
+      }
+    };
+
+  const handleTerminate = async (userId) => {
+    // API call to set user status back to 'safe'
+    await fetch(`http://localhost:5000/api/users/${userId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'safe' })
+    });
+    audio.playSound('alert'); // Use your existing audio engine
+};
 
   const systemLoad = users.length > 0 
     ? (35 + (users.filter(u => u.status === 'suspicious').length / users.length) * 55 + (Math.sin(Date.now() / 1000) * 2)).toFixed(2)
@@ -90,6 +109,7 @@ const handleDismiss = async (id) => {
   return {
     users, selectedUser, setSelectedUser,
     hasBooted, setHasBooted, uptime, banFlash,
-    panelControls, handleBan, systemLoad, handleDismiss,
+    panelControls, handleBan, systemLoad, handleDismiss, activeTab,
+    setActiveTab, handleTerminate
   };
 };

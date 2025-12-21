@@ -24,7 +24,7 @@ export const generateUser = (avatars) => {
 
 export const fetchInitialUsers = async () => {
   try {
-    const res = await fetch('http://localhost:1164/api/users');
+    const res = await fetch('http://localhost:5000/api/users');
     return await res.json();
   } catch (err) {
     console.error('Failed to fetch users:', err);
@@ -35,7 +35,7 @@ export const fetchInitialUsers = async () => {
 
 export const banUser = async (userId) => {
     try {
-        const res = await fetch(`http://localhost:1164/api/users/${userId}`, {
+        const res = await fetch(`http://localhost:5000/api/users/${userId}`, {
             method: 'DELETE',
         });
         if (!res.ok) {
@@ -48,9 +48,24 @@ export const banUser = async (userId) => {
     }
 };
 
+export const updateUserElo = async (userId, newElo) => {
+    try {
+        const res = await fetch(`http://localhost:5000/api/users/${userId}/stats`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eloChange: 0, newElo: parseInt(newElo) }) 
+            // Note: Ensure your backend handles 'newElo' override in /stats route
+        });
+        return await res.json();
+    } catch (err) {
+        console.error("ELO update failed:", err);
+        return null;
+    }
+};
+
 export const dismissReport = async (userId) => {
     try {
-        const res = await fetch(`http://localhost:1164/api/users/${userId}/dismiss`, {
+        const res = await fetch(`http://localhost:5000/api/users/${userId}/dismiss`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
         });

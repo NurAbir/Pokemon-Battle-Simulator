@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const UserSchema = new mongoose.Schema({
   id: Number,
   username: String,
-  status: { type: String, enum: ['safe', 'suspicious'], default: 'safe' },
+  status: { type: String, enum: ['safe', 'suspicious', 'battling'], default: 'safe' },
   activity: String,
   ping: Number,
   avatar: String,

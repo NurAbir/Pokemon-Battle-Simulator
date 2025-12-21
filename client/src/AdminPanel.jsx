@@ -14,11 +14,15 @@ import {
   Terminal,
   Crosshair,
   Wifi,
-  Gamepad2, // Added for new menu item
-  Database // Added for new menu item
+  Trophy,
+  Copy,
+  Check,
+  Gamepad2,
+  Database
 } from 'lucide-react';
 import { useAdminController } from './useAdminController'; // Controller Import
-import PokemonManager from './usePokemonManagerController'; // Import the new MVC Controller
+import PokemonManager from './usePokemonManagerController';
+import Leaderboard from './Leaderboard';
 
 // --- DATA CONSTANTS ---
 const avatars = ["https://i.pravatar.cc/150?u=a", "https://i.pravatar.cc/150?u=b", "https://i.pravatar.cc/150?u=c", "https://i.pravatar.cc/150?u=d"];
@@ -204,6 +208,15 @@ const UserCard = React.forwardRef(({ user, onClick, audio }, ref) => {
     const isSuspicious = user.status === 'suspicious';
     const isInGame = user.activity === 'Currently in-game';
 
+    const [copied, setCopied] = React.useState(false);
+
+  const copyId = (e) => {
+    e.stopPropagation(); // Don't trigger inspection
+    navigator.clipboard.writeText(user._id || user.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
     const handleCardClick = () => {
       audio.playSound('click');
       onClick(user);
@@ -225,6 +238,16 @@ const UserCard = React.forwardRef(({ user, onClick, audio }, ref) => {
             onClick={handleCardClick}
             onMouseEnter={() => audio.playSound('hover')} // Restored original hover sound
         >
+            <div className="flex justify-between items-center mb-2 px-1 text-[10px] font-mono text-gray-500 uppercase tracking-widest border-b border-gray-800 pb-1">
+              <span>UID: {user._id ? user._id.slice(-6) : user.id}</span>
+              <button 
+                onClick={copyId} 
+                className="hover:text-blue-400 transition-colors"
+                title="Copy Full ID"
+              >
+                {copied ? <Check size={10} className="text-green-500"/> : <Copy size={10}/>}
+              </button>
+            </div>
             <div className={`w-16 h-16 rounded-full border-4 mb-2 relative overflow-hidden ${isSuspicious ? 'border-red-500 shadow-[0_0_15px_#ef4444]' : 'border-blue-500/50 group-hover:border-blue-400'}`}>
                 <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
@@ -446,6 +469,14 @@ handleDismiss,
                 >
                     <Users size={16} /> User Control
                 </button>
+
+                <button 
+                    onClick={() => { setActiveTab('live'); audio.playSound('select'); }}
+                    onMouseEnter={() => audio.playSound('hover')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-mono text-xs uppercase tracking-wider ${activeTab === 'live' ? 'bg-purple-900/40 text-purple-200 border border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.3)]' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+                >
+                    <Activity size={16} /> Game Sessions
+                </button>
                 
                 <button 
                     onClick={() => { setActiveTab('pokemon'); audio.playSound('select'); }}
@@ -453,6 +484,14 @@ handleDismiss,
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-mono text-xs uppercase tracking-wider ${activeTab === 'pokemon' ? 'bg-purple-900/40 text-purple-200 border border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.3)]' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
                 >
                     <Gamepad2 size={16} /> Game Data
+                </button>
+
+                <button 
+                    onClick={() => { setActiveTab('leaderboard'); audio.playSound('select'); }}
+                    onMouseEnter={() => audio.playSound('hover')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-mono text-xs uppercase tracking-wider ${activeTab === 'leaderboard' ? 'bg-purple-900/40 text-purple-200 border border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.3)]' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+                >
+                    <Trophy size={16} /> Leaderboard
                 </button>
 
                 <button 
@@ -485,13 +524,13 @@ handleDismiss,
                             <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
                             <AnimatePresence mode='popLayout'>
                                 {users.map(u => (
-  <UserCard 
-    key={u._id || u.id}  // Use MongoDB _id first, fallback to id
-    user={u} 
-    onClick={setSelectedUser} 
-    audio={audio} 
-  />
-))}
+                                  <UserCard 
+                                    key={u._id || u.id}  // Use MongoDB _id first, fallback to id
+                                    user={u} 
+                                    onClick={setSelectedUser} 
+                                    audio={audio} 
+                                  />
+                                ))}
                             </AnimatePresence>
                             </motion.div>
                         </div>
@@ -530,6 +569,50 @@ handleDismiss,
                         <PokemonManager />
                     </div>
                 )}
+
+                {activeTab === 'leaderboard' && (
+                  <motion.div key="leaderboard" className="max-w-4xl mx-auto">
+                    <Leaderboard /> 
+                  </motion.div>
+                )}
+
+                {activeTab === 'live' && (
+                <motion.div key="live" className="space-y-6">
+                  <div className="flex items-center gap-4 mb-8">
+                    <Activity className="text-red-500 animate-pulse" size={32} />
+                    <h2 className="text-3xl font-black italic uppercase">Current Game Sessions</h2>
+                  </div>
+
+                  <div className="grid gap-4">
+                    {users.filter(u => u.status === 'battling').length === 0 ? (
+                      <div className="text-gray-600 italic">No active combat sessions detected...</div>
+                    ) : (
+                      users.filter(u => u.status === 'battling').map(user => (
+                        <div key={user.id} className="bg-red-900/10 border border-red-500/30 p-4 rounded-xl flex justify-between items-center group hover:border-red-500 transition-all">
+                          <div className="flex items-center gap-4">
+                            <div className="relative">
+                              <img src={user.avatar} className="w-12 h-12 rounded-full border-2 border-red-500" />
+                              <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-lg">{user.username}</h3>
+                              <p className="text-xs text-red-400 font-mono uppercase tracking-tighter">
+                                IN-COMBAT • PING: {user.ping}ms • ELO: {user.reportData.ELO}
+                              </p>
+                            </div>
+                          </div>
+                          <button 
+                            // onClick={() => ()}
+                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded font-black text-xs uppercase shadow-[0_0_15px_rgba(220,38,38,0.4)]"
+                          >
+                            Terminate Session
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
 
             </motion.div>
           </main>

@@ -114,4 +114,91 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// --- 6. PATCH Update User Stats (Battle Results) ---
+router.patch('/:id/stats', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { win, eloChange } = req.body;
+
+    // Find by _id or custom id
+    const query = (id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) 
+                  ? { _id: id } : { id: parseInt(id) };
+
+    const user = await User.findOne(query);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Update Wins/Losses
+    if (win) {
+      user.reportData.Wins = (user.reportData.Wins || 0) + 1;
+    } else {
+      user.reportData.Losses = (user.reportData.Losses || 0) + 1;
+    }
+
+    // Calculate new ELO (Assuming ELO is stored as a string like "1200")
+    const currentElo = parseInt(user.reportData.ELO) || 1000;
+    user.reportData.ELO = (currentElo + eloChange).toString();
+
+    await user.save();
+    res.json({ success: true, newStats: user.reportData });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// --- 7. GET Leaderboard (Sorted by ELO) ---
+router.get('/leaderboard', async (req, res) => {
+  try {
+    // We convert ELO string to number for sorting if necessary, or ensure it's stored as number
+    const users = await User.find().sort({ "reportData.ELO": -1 }).limit(10);
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// --- 8. PATCH Season Reset (Admin Only) ---
+router.patch('/season-reset', async (req, res) => {
+  try {
+    await User.updateMany({}, { 
+      $set: { "reportData.ELO": "1000", "reportData.Wins": 0, "reportData.Losses": 0 } 
+    });
+    res.json({ message: "Season reset successful. All rankings normalized." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// --- 9. GET Active Battles ---
+router.get('/active-battles', async (req, res) => {
+  try {
+    const battlingUsers = await User.find({ status: 'battling' });
+    res.json(battlingUsers);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// --- 10. PATCH Update User Status ---
+router.patch('/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const user = await User.findOneAndUpdate(
+      { $or: [
+        { _id: mongoose.Types.ObjectId.isValid(id) ? id : null }, 
+        { id: parseInt(id) || -1 }, 
+        { username: id }
+      ]},
+      { $set: { status: status } },
+      { new: true }
+    );
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;

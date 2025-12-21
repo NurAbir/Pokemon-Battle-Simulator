@@ -1,6 +1,6 @@
 /* useGameController.js - The Logic Layer */
 import { useState } from 'react';
-import { findMatch, submitReport, fetchPokemonDeck } from './GameModel';
+import { findMatch, submitReport, fetchPokemonDeck, updateUserStats } from './GameModel';
 
 export const useGameController = () => {
   const [gameState, setGameState] = useState('LOGIN'); // LOGIN, SEARCHING, PLAYING
@@ -9,6 +9,7 @@ export const useGameController = () => {
   const [isReporting, setIsReporting] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
   const [pokemonDeck, setPokemonDeck] = useState([]);
+  const [battleResult, setBattleResult] = useState(null); // { result: 'WIN'|'LOSS', eloGain: number }
 
   const handleLogin = (username) => {
     if (!username) return;
@@ -21,6 +22,28 @@ export const useGameController = () => {
       setOpponent(match);
       setGameState('PLAYING');
     }, 2000);
+  };
+
+const startBattle = async () => {
+    // Update status to 'battling' so admins can see it
+    await fetch(`http://localhost:5000/api/users/${currentUser}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' }, // Add this header
+        body: JSON.stringify({ status: 'battling' })
+    });
+    // 1. Simulate Battle Logic
+    const isWin = Math.random() > 0.5;
+    const eloChange = isWin ? 20 : -15;
+
+    // 2. Update Backend
+    await updateUserStats(currentUser, isWin, eloChange);
+
+    // 3. Set UI State
+    setBattleResult({
+      result: isWin ? 'VICTORY' : 'DEFEAT',
+      eloGain: eloChange
+    });
+    setGameState('SUMMARY');
   };
 
   const handleReport = async () => {
@@ -62,5 +85,7 @@ const findNewMatch = () => {
     handleReport,
     findNewMatch,
     pokemonDeck,
+    battleResult,
+    startBattle,
   };
 };

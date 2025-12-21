@@ -41,7 +41,7 @@ export default function Game() {
   const { 
     gameState, currentUser, opponent, isReporting, reportSuccess,
     handleLogin, handleReport, findNewMatch,
-    pokemonDeck 
+    pokemonDeck, battleResult, startBattle
   } = useGameController();
   
   const [inputName, setInputName] = useState('');
@@ -142,6 +142,13 @@ export default function Game() {
                 >
                   {reportSuccess ? 'Report Sent' : <><ShieldAlert size={18}/> Report Player</>}
                 </button>
+
+<button 
+  onClick={startBattle}
+  className="p-3 bg-amber-500 text-black font-bold rounded hover:bg-amber-400 transition-all flex items-center justify-center gap-2"
+>
+  <Zap size={18}/> Fight!
+</button>
                 
                 <button 
                   onClick={findNewMatch}
@@ -165,6 +172,39 @@ export default function Game() {
             </AnimatePresence>
           </motion.div>
         )}
+
+        {/* --- STATE: SUMMARY --- */}
+{gameState === 'SUMMARY' && battleResult && (
+  <motion.div 
+    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+    className="bg-black border-2 border-amber-500 p-8 rounded-xl text-center"
+  >
+    <h2 className={`text-4xl font-black mb-2 ${battleResult.result === 'VICTORY' ? 'text-green-500' : 'text-red-500'}`}>
+      {battleResult.result}
+    </h2>
+    <p className="text-amber-500/60 mb-6 font-mono">MATCH TERMINATED</p>
+    
+    <div className="bg-neutral-900 p-4 rounded border border-amber-900/50 mb-8">
+      <div className="flex justify-between mb-2">
+        <span>ELO ADJUSTMENT:</span>
+        <span className={battleResult.eloGain > 0 ? 'text-green-400' : 'text-red-400'}>
+          {battleResult.eloGain > 0 ? `+${battleResult.eloGain}` : battleResult.eloGain}
+        </span>
+      </div>
+      <div className="flex justify-between">
+        <span>RANK STATUS:</span>
+        <span className="text-amber-400">STABLE</span>
+      </div>
+    </div>
+
+    <button 
+      onClick={findNewMatch}
+      className="w-full bg-amber-600 text-black font-bold p-4 rounded uppercase tracking-widest hover:bg-amber-500 transition-all"
+    >
+      Return to Lobby
+    </button>
+  </motion.div>
+)}
       </div>
     </div>
   );
