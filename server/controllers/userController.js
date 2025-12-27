@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const Statistics = require('../models/Statistics');
 const Battle = require('../models/Battle');
-const generateId = require('../utils/generateId');
+const { generateId } = require('../utils/generateId');
 
 // @route   GET /api/user/profile
 exports.getProfile = async (req, res) => {

@@ -1,6 +1,7 @@
 // client/src/components/Battle.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import socketService from '../services/socketService';
+import BattleLogPanel from './BattleLogPanel';
 import '../styles/battle.css';
 
 const Battle = () => {
@@ -14,6 +15,8 @@ const Battle = () => {
   const [selectedMove, setSelectedMove] = useState(null);
   const [showSwitchMenu, setShowSwitchMenu] = useState(false);
   const [battleLog, setBattleLog] = useState([]);
+  const [turnTimer, setTurnTimer] = useState(null);
+  const [showWarning, setShowWarning] = useState(false);
   const [spriteErrors, setSpriteErrors] = useState({ player: false, opponent: false });
 
   // Helper function to get Pokemon ID from name
@@ -80,6 +83,48 @@ const Battle = () => {
     return pokemonNameToId[name] || 1; // Default to Bulbasaur if not found
   };
 
+  // Handle new log entry
+  const handleBattleLog = useCallback((entry) => {
+    setBattleLog(prev => [...prev, entry]);
+  }, []);
+
+  // Handle timer updates
+  const handleTimerUpdate = useCallback((data) => {
+    setTurnTimer(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        players: prev.players.map(p => 
+          p.userId === data.userId 
+            ? { ...p, timeRemaining: data.timeRemaining }
+            : p
+        )
+      };
+    });
+  }, []);
+
+  // Handle timer start
+  const handleTimerStart = useCallback((data) => {
+    setTurnTimer({
+      turn: data.turn,
+      duration: data.duration,
+      players: [] // Will be populated from battle state
+    });
+    setShowWarning(false);
+  }, []);
+
+  // Handle warnings
+  const handleBattleWarning = useCallback((data) => {
+    setShowWarning(true);
+    // Flash warning effect
+    setTimeout(() => setShowWarning(false), 3000);
+  }, []);
+
+  // Handle timeout
+  const handleBattleTimeout = useCallback((data) => {
+    // Timeout will trigger battleEnd
+  }, []);
+
   useEffect(() => {
     // Connect to socket
     socketService.connect(username, token);
@@ -94,6 +139,16 @@ const Battle = () => {
       setSearching(false);
       setBattleState(state);
       setBattleLog(state.battleLog || []);
+      
+      // Initialize timer state with player info
+      setTurnTimer({
+        turn: state.turn || 1,
+        duration: 120,
+        players: [
+          { userId: userId, username: state.player.username, ready: false, timeRemaining: 120 },
+          { userId: 'opponent', username: state.opponent.username, ready: false, timeRemaining: 120 }
+        ]
+      });
     });
 
     socketService.on('battleUpdate', (state) => {
@@ -103,17 +158,51 @@ const Battle = () => {
       setSelectedMove(null);
     });
 
-    socketService.on('playerReady', ({ playerIndex }) => {
+    socketService.on('playerReady', ({ playerIndex, userId: readyUserId, ready }) => {
       console.log(`Player ${playerIndex} is ready`);
+      setTurnTimer(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          players: prev.players.map(p => 
+            (playerIndex === 0 && p.userId === userId) || 
+            (playerIndex === 1 && p.userId !== userId)
+              ? { ...p, ready: true }
+              : p
+          )
+        };
+      });
     });
 
-    socketService.on('battleEnd', ({ winner, reason, battleLog }) => {
+    socketService.on('battleEnd', ({ winner, reason, battleLog: finalLog }) => {
       console.log('Battle ended:', { winner, reason });
       const isWinner = winner === userId;
-      alert(isWinner ? 'You won!' : 'You lost!');
+      const message = reason === 'forfeit' 
+        ? (isWinner ? 'Opponent forfeited!' : 'You forfeited.')
+        : reason === 'timeout'
+          ? (isWinner ? 'Opponent timed out!' : 'You timed out.')
+          : (isWinner ? 'You won!' : 'You lost!');
+      
+      alert(message);
       setBattleState(null);
-      setBattleLog(battleLog || []);
+      setBattleLog(finalLog || []);
+      setTurnTimer(null);
       setSearching(false);
+    });
+
+    // Battle log events
+    socketService.on('battle:log', handleBattleLog);
+    socketService.on('battle:timerStart', handleTimerStart);
+    socketService.on('battle:timerUpdate', handleTimerUpdate);
+    socketService.on('battle:warning', handleBattleWarning);
+    socketService.on('battle:timeout', handleBattleTimeout);
+
+    socketService.on('battleRejoin', ({ state, logReplay, timerState, isReconnect }) => {
+      setBattleState(state);
+      setBattleLog(state.battleLog || []);
+      if (timerState) {
+        setTurnTimer(timerState);
+      }
     });
 
     socketService.on('error', ({ message }) => {
@@ -127,9 +216,15 @@ const Battle = () => {
       socketService.removeAllListeners('battleUpdate');
       socketService.removeAllListeners('playerReady');
       socketService.removeAllListeners('battleEnd');
+      socketService.removeAllListeners('battle:log');
+      socketService.removeAllListeners('battle:timerStart');
+      socketService.removeAllListeners('battle:timerUpdate');
+      socketService.removeAllListeners('battle:warning');
+      socketService.removeAllListeners('battle:timeout');
+      socketService.removeAllListeners('battleRejoin');
       socketService.removeAllListeners('error');
     };
-  }, [userId, username, token]);
+  }, [userId, username, token, handleBattleLog, handleTimerUpdate, handleTimerStart, handleBattleWarning, handleBattleTimeout]);
 
   // Reset sprite errors when Pokemon change
   useEffect(() => {
@@ -138,6 +233,7 @@ const Battle = () => {
       console.log('Player Pokemon Data:', battleState.player.activePokemon);
       setSpriteErrors({ player: false, opponent: false });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battleState?.player?.activePokemon?.name, battleState?.opponent?.activePokemon?.name]);
 
   const handleJoinMatchmaking = () => {
@@ -318,14 +414,21 @@ const Battle = () => {
           </div>
         </div>
 
-        {/* Battle Log */}
-        <div className="battle-log">
-          {battleLog.map((log, index) => (
-            <div key={index} className="log-entry">
-              {typeof log === 'string' ? log : log.message || JSON.stringify(log)}
+        {/* Battle Log Panel */}
+        <BattleLogPanel 
+          battleLog={battleLog}
+          turnTimer={turnTimer}
+          userId={userId}
+        />
+
+        {/* Warning Overlay */}
+        {showWarning && (
+          <div className="warning-overlay">
+            <div className="warning-content">
+              ⚠️ Time is running out! Make your move!
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
         {/* Controls */}
         <div className="battle-controls">

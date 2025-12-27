@@ -46,7 +46,12 @@ const userSchema = new mongoose.Schema({
   isBanned: {
     type: Boolean,
     default: false
-  }
+  },
+  // Friends list - array of userId strings
+  friends: [{
+    type: String,
+    ref: 'User'
+  }]
 }, { timestamps: true });
 
 // Hash password before saving - NO NEXT NEEDED

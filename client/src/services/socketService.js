@@ -21,11 +21,11 @@ class SocketService {
     });
 
     this.socket.on('connect', () => {
-      console.log('Connected to battle server');
+      console.log('Connected to server');
     });
 
     this.socket.on('disconnect', () => {
-      console.log('Disconnected from battle server');
+      console.log('Disconnected from server');
     });
 
     this.socket.on('error', (error) => {
@@ -64,6 +64,63 @@ class SocketService {
     this.socket.emit('forfeit', { battleId, userId });
   }
 
+  // Battle log methods
+  rejoinBattle(battleId, userId, lastLogTimestamp = null) {
+    if (this.socket) {
+      this.socket.emit('rejoinBattle', { battleId, userId, lastLogTimestamp });
+    }
+  }
+
+  // Notification methods
+  joinNotificationRoom(userId) {
+    if (this.socket) {
+      this.socket.emit('joinNotificationRoom', { userId });
+    }
+  }
+
+  leaveNotificationRoom(userId) {
+    if (this.socket) {
+      this.socket.emit('leaveNotificationRoom', { userId });
+    }
+  }
+
+  // Chat methods
+  joinChatRoom(roomId, userId) {
+    if (this.socket) {
+      this.socket.emit('joinChatRoom', { roomId, userId });
+    }
+  }
+
+  leaveChatRoom(roomId) {
+    if (this.socket) {
+      this.socket.emit('leaveChatRoom', { roomId });
+    }
+  }
+
+  sendMessage(roomId, userId, content) {
+    if (this.socket) {
+      this.socket.emit('sendMessage', { roomId, userId, content });
+    }
+  }
+
+  startTyping(roomId, userId, username) {
+    if (this.socket) {
+      this.socket.emit('startTyping', { roomId, userId, username });
+    }
+  }
+
+  stopTyping(roomId, userId) {
+    if (this.socket) {
+      this.socket.emit('stopTyping', { roomId, userId });
+    }
+  }
+
+  markMessagesRead(roomId, userId) {
+    if (this.socket) {
+      this.socket.emit('markMessagesRead', { roomId, userId });
+    }
+  }
+
   // Event listeners
   on(event, callback) {
     if (this.socket) {
@@ -100,4 +157,6 @@ class SocketService {
   }
 }
 
-export default new SocketService();
+// Assign to variable before exporting to satisfy ESLint
+const socketService = new SocketService();
+export default socketService;

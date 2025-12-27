@@ -2,6 +2,11 @@ const Battle = require('../models/Battle');
 const Team = require('../models/Team');
 const User = require('../models/User');
 const BattleEngine = require('../utils/battleEngine');
+const BattleLogService = require('../utils/battleLogService');
+const TurnTimerManager = require('../utils/turnTimerManager');
+const BattleLog = require('../models/BattleLog');
+const Notification = require('../models/Notification');
+const { createBattleChat, archiveBattleChat } = require('./chatHandler');
 
 // Generate unique battle ID
 function generateId(prefix = 'id') {
@@ -12,9 +17,109 @@ function generateId(prefix = 'id') {
 
 // Store active matchmaking users
 const matchmakingQueue = [];
-const activeBattles = new Map(); // battleId -> { room, players }
+const activeBattles = new Map(); // battleId -> { room, players, timerData }
+
+// Module-level services (initialized in module.exports)
+let battleLogService = null;
+let turnTimerManager = null;
+
+// Helper: Send battle result notifications to both players
+async function sendBattleResultNotifications(io, battle) {
+  try {
+    const player1 = battle.players[0];
+    const player2 = battle.players[1];
+    const winnerId = battle.winner;
+    
+    const winnerUsername = winnerId === player1.userId ? player1.username : player2.username;
+    const loserUsername = winnerId === player1.userId ? player2.username : player1.username;
+    
+    // Create summary from battle log (last few entries)
+    const summary = battle.battleLog.slice(-5).join(' | ');
+    
+    // Notification for player 1
+    const notif1 = await Notification.createBattleResult(player1.userId, {
+      battleId: battle.battleId,
+      winner: winnerId,
+      winnerUsername,
+      loserUsername,
+      isWinner: winnerId === player1.userId,
+      opponentUsername: player2.username,
+      summary
+    });
+    
+    // Notification for player 2
+    const notif2 = await Notification.createBattleResult(player2.userId, {
+      battleId: battle.battleId,
+      winner: winnerId,
+      winnerUsername,
+      loserUsername,
+      isWinner: winnerId === player2.userId,
+      opponentUsername: player1.username,
+      summary
+    });
+    
+    // Emit to both players (persisted even if offline)
+    io.to(`user_${player1.userId}`).emit('newNotification', notif1);
+    io.to(`user_${player2.userId}`).emit('newNotification', notif2);
+    
+    console.log('Battle result notifications sent');
+  } catch (error) {
+    console.error('Error sending battle result notifications:', error);
+  }
+}
+
+// Handle player timeout - player loses by timeout
+async function handlePlayerTimeout(io, battleId, timedOutUserId) {
+  try {
+    const battle = await Battle.findOne({ battleId, status: 'active' });
+    if (!battle) return;
+    
+    const timedOutPlayerIndex = battle.players.findIndex(p => p.userId === timedOutUserId);
+    if (timedOutPlayerIndex === -1) return;
+    
+    const winnerIndex = 1 - timedOutPlayerIndex;
+    const winner = battle.players[winnerIndex];
+    
+    battle.status = 'completed';
+    battle.winner = winner.userId;
+    await battle.save();
+    
+    // Log battle end via service
+    await battleLogService.battleEnd(battleId, battle.turn, winner.userId, winner.username, 'timeout');
+    
+    const battleInfo = activeBattles.get(battleId);
+    if (battleInfo) {
+      const fullLog = await battleLogService.getFullLog(battleId);
+      
+      io.to(battleInfo.room).emit('battleEnd', {
+        winner: battle.winner,
+        reason: 'timeout',
+        battleLog: fullLog
+      });
+      
+      // Send notifications
+      await sendBattleResultNotifications(io, battle);
+      
+      // Archive chat
+      await archiveBattleChat(io, battleId, battle.winner, winner.username);
+      
+      // Cleanup
+      turnTimerManager.endBattle(battleId);
+      activeBattles.delete(battleId);
+    }
+  } catch (error) {
+    console.error('Timeout handling error:', error);
+  }
+}
 
 module.exports = (io) => {
+  // Initialize services
+  battleLogService = new BattleLogService(io);
+  turnTimerManager = new TurnTimerManager(io, battleLogService);
+  
+  // Set log service on battle engine
+  BattleEngine.setLogService(battleLogService);
+
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
     
@@ -158,12 +263,31 @@ module.exports = (io) => {
             
             console.log(`✓ Battle created: ${battleId}`);
             
+            // Initialize turn timer
+            turnTimerManager.startBattle(battleId, [
+              { userId: player1.userId, username: player1.username },
+              { userId: player2.userId, username: player2.username }
+            ]);
+            
+            // Create battle chat room
+            await createBattleChat(io, battleId, player1.userId, player2.userId);
+            
             // Send initial battle state to both players
             const state1 = BattleEngine.getBattleState(battle, player1.userId);
             const state2 = BattleEngine.getBattleState(battle, player2.userId);
             
+            // Get full log for initial state
+            const fullLog = await battleLogService.getFullLog(battleId);
+            state1.battleLog = fullLog;
+            state2.battleLog = fullLog;
+            
             socket1.emit('battleStart', state1);
             socket2.emit('battleStart', state2);
+            
+            // Start turn timer
+            turnTimerManager.startTurn(battleId, 1, async (timedOutUserId, timedOutUsername) => {
+              await handlePlayerTimeout(io, battleId, timedOutUserId);
+            });
             
             console.log('✓ Battle states sent to both players');
           } catch (battleError) {
@@ -232,10 +356,14 @@ module.exports = (io) => {
         
         console.log('Move saved, player ready');
         
+        // Mark player ready in timer
+        turnTimerManager.markReady(battleId, userId);
+        
         const battleInfo = activeBattles.get(battleId);
         if (battleInfo) {
           io.to(battleInfo.room).emit('playerReady', { 
             playerIndex,
+            userId,
             ready: true 
           });
         }
@@ -247,15 +375,23 @@ module.exports = (io) => {
         if (bothReady) {
           console.log('Processing turn...');
           
+          // Log turn start
+          await battleLogService.turnStart(battleId, battle.turn);
+          
           // Process turn
           const updatedBattle = await BattleEngine.processTurn(battle);
           
           console.log('Turn processed, battle status:', updatedBattle.status);
-          console.log('Battle log entries:', updatedBattle.battleLog.length);
+          
+          // Get full log
+          const fullLog = await battleLogService.getFullLog(battleId);
+          console.log('Battle log entries:', fullLog.length);
           
           // Send updated state to both players
           const state1 = BattleEngine.getBattleState(updatedBattle, battle.players[0].userId);
           const state2 = BattleEngine.getBattleState(updatedBattle, battle.players[1].userId);
+          state1.battleLog = fullLog;
+          state2.battleLog = fullLog;
           
           if (battleInfo) {
             const sockets = Array.from(io.sockets.adapter.rooms.get(battleInfo.room) || []);
@@ -277,11 +413,25 @@ module.exports = (io) => {
             if (battleInfo) {
               io.to(battleInfo.room).emit('battleEnd', {
                 winner: updatedBattle.winner,
-                battleLog: updatedBattle.battleLog
+                battleLog: fullLog
               });
               
+              // Send battle result notifications
+              await sendBattleResultNotifications(io, updatedBattle);
+              
+              // Archive battle chat
+              const winnerUsername = updatedBattle.players.find(p => p.userId === updatedBattle.winner)?.username;
+              await archiveBattleChat(io, battleId, updatedBattle.winner, winnerUsername);
+              
+              // Cleanup
+              turnTimerManager.endBattle(battleId);
               activeBattles.delete(battleId);
             }
+          } else {
+            // Start timer for next turn
+            turnTimerManager.startTurn(battleId, updatedBattle.turn, async (timedOutUserId) => {
+              await handlePlayerTimeout(io, battleId, timedOutUserId);
+            });
           }
         }
       } catch (error) {
@@ -317,20 +467,32 @@ module.exports = (io) => {
         battle.players[playerIndex].ready = true;
         await battle.save();
         
+        // Mark player ready in timer
+        turnTimerManager.markReady(battleId, userId);
+        
         const battleInfo = activeBattles.get(battleId);
         if (battleInfo) {
           io.to(battleInfo.room).emit('playerReady', { 
             playerIndex,
+            userId,
             ready: true 
           });
         }
         
         // Check if both players ready
         if (battle.players.every(p => p.ready)) {
+          // Log turn start
+          await battleLogService.turnStart(battleId, battle.turn);
+          
           const updatedBattle = await BattleEngine.processTurn(battle);
+          
+          // Get full log
+          const fullLog = await battleLogService.getFullLog(battleId);
           
           const state1 = BattleEngine.getBattleState(updatedBattle, battle.players[0].userId);
           const state2 = BattleEngine.getBattleState(updatedBattle, battle.players[1].userId);
+          state1.battleLog = fullLog;
+          state2.battleLog = fullLog;
           
           if (battleInfo) {
             const sockets = Array.from(io.sockets.adapter.rooms.get(battleInfo.room) || []);
@@ -347,11 +509,25 @@ module.exports = (io) => {
             if (battleInfo) {
               io.to(battleInfo.room).emit('battleEnd', {
                 winner: updatedBattle.winner,
-                battleLog: updatedBattle.battleLog
+                battleLog: fullLog
               });
               
+              // Send battle result notifications
+              await sendBattleResultNotifications(io, updatedBattle);
+              
+              // Archive battle chat
+              const winnerUsername = updatedBattle.players.find(p => p.userId === updatedBattle.winner)?.username;
+              await archiveBattleChat(io, battleId, updatedBattle.winner, winnerUsername);
+              
+              // Cleanup
+              turnTimerManager.endBattle(battleId);
               activeBattles.delete(battleId);
             }
+          } else {
+            // Start timer for next turn
+            turnTimerManager.startTurn(battleId, updatedBattle.turn, async (timedOutUserId) => {
+              await handlePlayerTimeout(io, battleId, timedOutUserId);
+            });
           }
         }
       } catch (error) {
@@ -370,23 +546,85 @@ module.exports = (io) => {
         const playerIndex = battle.players.findIndex(p => p.userId === userId);
         if (playerIndex === -1) return;
         
+        const winner = battle.players[1 - playerIndex];
         battle.status = 'completed';
-        battle.winner = battle.players[1 - playerIndex].userId;
-        battle.addLog(`${battle.players[playerIndex].username} forfeited the battle!`);
+        battle.winner = winner.userId;
         await battle.save();
+        
+        // Log forfeit via service
+        await battleLogService.system(battleId, battle.turn, 
+          `${battle.players[playerIndex].username} forfeited the battle!`
+        );
+        await battleLogService.battleEnd(battleId, battle.turn, winner.userId, winner.username, 'forfeit');
         
         const battleInfo = activeBattles.get(battleId);
         if (battleInfo) {
+          const fullLog = await battleLogService.getFullLog(battleId);
+          
           io.to(battleInfo.room).emit('battleEnd', {
             winner: battle.winner,
             reason: 'forfeit',
-            battleLog: battle.battleLog
+            battleLog: fullLog
           });
           
+          // Send battle result notifications
+          await sendBattleResultNotifications(io, battle);
+          
+          // Archive battle chat
+          await archiveBattleChat(io, battleId, battle.winner, winner.username);
+          
+          // Cleanup
+          turnTimerManager.endBattle(battleId);
           activeBattles.delete(battleId);
         }
       } catch (error) {
         console.error('Forfeit error:', error);
+      }
+    });
+    
+    // Reconnect to battle - replay log
+    socket.on('rejoinBattle', async ({ battleId, userId, lastLogTimestamp }) => {
+      try {
+        const battle = await Battle.findOne({ battleId });
+        if (!battle) {
+          socket.emit('error', { message: 'Battle not found' });
+          return;
+        }
+        
+        const playerIndex = battle.players.findIndex(p => p.userId === userId);
+        if (playerIndex === -1) {
+          socket.emit('error', { message: 'Not a participant of this battle' });
+          return;
+        }
+        
+        // Join battle room
+        socket.join(`battle_${battleId}`);
+        
+        // Get log entries (full or after timestamp)
+        let logEntries;
+        if (lastLogTimestamp) {
+          logEntries = await battleLogService.getLogAfter(battleId, lastLogTimestamp);
+        } else {
+          logEntries = await battleLogService.getFullLog(battleId);
+        }
+        
+        // Get current state
+        const state = BattleEngine.getBattleState(battle, userId);
+        state.battleLog = await battleLogService.getFullLog(battleId);
+        
+        // Get timer state
+        const timerState = turnTimerManager.getTimerState(battleId);
+        
+        // Send rejoin data
+        socket.emit('battleRejoin', {
+          state,
+          logReplay: logEntries,
+          timerState,
+          isReconnect: true
+        });
+      } catch (error) {
+        console.error('Rejoin error:', error);
+        socket.emit('error', { message: 'Failed to rejoin battle' });
       }
     });
     
@@ -401,7 +639,7 @@ module.exports = (io) => {
         console.log(`Player removed from queue. Size: ${matchmakingQueue.length}`);
       }
       
-      // TODO: Handle active battles - consider forfeiting on disconnect
+      // Note: Timer will handle timeout if player doesn't reconnect
     });
   });
 };

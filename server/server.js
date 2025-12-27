@@ -7,6 +7,8 @@ const dotenv = require('dotenv');
 const path = require('path');
 const connectDB = require('./config/database');
 const battleHandler = require('./sockets/battleHandler');
+const notificationHandler = require('./sockets/notificationHandler');
+const chatHandler = require('./sockets/chatHandler');
 
 // Load env vars
 dotenv.config();
@@ -27,6 +29,9 @@ const io = socketIo(server, {
   }
 });
 
+// Make io available to routes
+app.set('io', io);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -42,14 +47,31 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const teamRoutes = require('./routes/team');
 const battleRoutes = require('./routes/battleRoutes');
+const notificationRoutes = require('./routes/notification');
+const friendRoutes = require('./routes/friend');
+const chatRoutes = require('./routes/chat');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/battles', battleRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/friends', friendRoutes);
+app.use('/api/chat', chatRoutes);
 
-// Initialize battle handler
+// Initialize socket handlers
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+  
+  // Register notification socket events
+  notificationHandler(io, socket);
+  
+  // Register chat socket events
+  chatHandler(io, socket);
+});
+
+// Initialize battle handler (has its own io.on('connection'))
 battleHandler(io);
 
 // Health check
@@ -76,4 +98,4 @@ server.listen(PORT, () => {
   console.log(`Socket.IO server ready for connections`);
 });
 
-module.exports = { io }; 
+module.exports = { io };
