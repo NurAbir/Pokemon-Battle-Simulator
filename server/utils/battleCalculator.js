@@ -22,6 +22,62 @@ const TYPE_CHART = {
   fairy: { fire: 0.5, fighting: 2, poison: 0.5, dragon: 2, dark: 2, steel: 0.5 }
 };
 
+// Hardcoded special move data (for first 100 moves)
+const MOVE_DATA = {
+  // Status moves with stat changes
+  'swords-dance': { statChanges: { atk: 2 }, target: 'self' },
+  'whirlwind': { forceSwitch: true },
+  'leer': { statChanges: { def: -1 }, target: 'opponent' },
+  'growl': { statChanges: { atk: -1 }, target: 'opponent' },
+  'tail-whip': { statChanges: { def: -1 }, target: 'opponent' },
+  'string-shot': { statChanges: { spe: -2 }, target: 'opponent' },
+  'sand-attack': { statChanges: { accuracy: -1 }, target: 'opponent' },
+  'double-team': { statChanges: { evasion: 1 }, target: 'self' },
+  'harden': { statChanges: { def: 1 }, target: 'self' },
+  'withdraw': { statChanges: { def: 1 }, target: 'self' },
+  'defense-curl': { statChanges: { def: 1 }, target: 'self' },
+  'growth': { statChanges: { spa: 1, atk: 1 }, target: 'self' },
+  'smokescreen': { statChanges: { accuracy: -1 }, target: 'opponent' },
+  'minimize': { statChanges: { evasion: 2 }, target: 'self' },
+  'screech': { statChanges: { def: -2 }, target: 'opponent' },
+  'acid-armor': { statChanges: { def: 2 }, target: 'self' },
+  'agility': { statChanges: { spe: 2 }, target: 'self' },
+  'barrier': { statChanges: { def: 2 }, target: 'self' },
+  
+  // OHKO moves
+  'guillotine': { ohko: true },
+  'horn-drill': { ohko: true },
+  'fissure': { ohko: true },
+  
+  // Multi-hit moves (2-5 hits)
+  'double-slap': { multihit: { min: 2, max: 5 } },
+  'comet-punch': { multihit: { min: 2, max: 5 } },
+  'fury-attack': { multihit: { min: 2, max: 5 } },
+  'pin-missile': { multihit: { min: 2, max: 5 } },
+  'spike-cannon': { multihit: { min: 2, max: 5 } },
+  'barrage': { multihit: { min: 2, max: 5 } },
+  
+  // Fixed multi-hit moves
+  'double-kick': { multihit: { min: 2, max: 2 } },
+  'twineedle': { multihit: { min: 2, max: 2 } },
+  'bonemerang': { multihit: { min: 2, max: 2 } },
+  
+  // Priority moves
+  'quick-attack': { priority: 1 },
+  'counter': { priority: -5 }, // Negative priority
+  
+  // Recoil moves
+  'take-down': { recoil: 0.25 },
+  'double-edge': { recoil: 0.33 },
+  'submission': { recoil: 0.25 },
+};
+
+// Get special move data
+function getMoveData(moveName) {
+  const normalized = normalizeString(moveName);
+  return MOVE_DATA[normalized] || {};
+}
+
 // Stat stage multipliers
 const STAT_STAGE_MULTIPLIERS = {
   '-6': 2/8, '-5': 2/7, '-4': 2/6, '-3': 2/5, '-2': 2/4, '-1': 2/3,
@@ -41,15 +97,12 @@ function clampStatStage(stage) {
 
 // Apply stat stage changes (for moves like Sword Dance, Dragon Dance, etc.)
 function applyStatChanges(pokemon, statChanges) {
-  // statChanges should be an object like { atk: 2, spe: 1 }
-  // Ensure statStages exists
-  const currentStages = pokemon.statStages || { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
+  const currentStages = pokemon.statStages || { atk: 0, def: 0, spa: 0, spd: 0, spe: 0, accuracy: 0, evasion: 0 };
   const updatedStages = { ...currentStages };
   
   for (const [stat, change] of Object.entries(statChanges)) {
     const normalizedStat = normalizeString(stat);
     
-    // Initialize if doesn't exist
     if (updatedStages[normalizedStat] === undefined) {
       updatedStages[normalizedStat] = 0;
     }
@@ -64,13 +117,15 @@ function applyStatChanges(pokemon, statChanges) {
 }
 
 // Get stat stage change message
-function getStatChangeMessage(statChanges) {
+function getStatChangeMessage(pokemonName, statChanges) {
   const statNames = {
     atk: 'Attack',
     def: 'Defense',
     spa: 'Sp. Atk',
     spd: 'Sp. Def',
-    spe: 'Speed'
+    spe: 'Speed',
+    accuracy: 'accuracy',
+    evasion: 'evasiveness'
   };
   
   const messages = [];
@@ -87,13 +142,13 @@ function getStatChangeMessage(statChanges) {
     else if (Math.abs(change) >= 3) amount = ' drastically';
     
     if (change > 0) {
-      messages.push(`${statName} rose${amount}!`);
+      messages.push(`${pokemonName}'s ${statName} rose${amount}!`);
     } else {
-      messages.push(`${statName} fell${amount}!`);
+      messages.push(`${pokemonName}'s ${statName} fell${amount}!`);
     }
   }
   
-  return messages.join(' ');
+  return messages;
 }
 
 // Calculate type effectiveness
@@ -119,27 +174,31 @@ function hasSTAB(moveType, attackerTypes) {
 
 // Calculate critical hit
 function isCriticalHit(critStage = 0) {
-  // Critical hit rates based on stage
   const critRates = {
-    0: 1/24,   // ~4.17%
-    1: 1/8,    // 12.5%
-    2: 1/2,    // 50%
-    3: 1       // 100%
+    0: 1/24,
+    1: 1/8,
+    2: 1/2,
+    3: 1
   };
   
   const rate = critRates[Math.min(critStage, 3)] || critRates[0];
   return Math.random() < rate;
 }
 
+// Check OHKO move hits (level-based accuracy)
+function ohkoHits(attackerLevel, defenderLevel) {
+  if (attackerLevel < defenderLevel) return false;
+  const accuracy = 30 + (attackerLevel - defenderLevel);
+  return Math.random() * 100 < accuracy;
+}
+
 // Check move accuracy
 function moveHits(accuracy, attackerAccStage = 0, defenderEvaStage = 0) {
-  if (accuracy === null || accuracy === undefined) return true; // Moves that never miss
+  if (accuracy === null || accuracy === undefined) return true;
   
-  // Clamp stages
   attackerAccStage = clampStatStage(attackerAccStage);
   defenderEvaStage = clampStatStage(defenderEvaStage);
   
-  // Calculate accuracy with stages
   let accMod = STAT_STAGE_MULTIPLIERS[attackerAccStage.toString()];
   let evaMod = STAT_STAGE_MULTIPLIERS[defenderEvaStage.toString()];
   
@@ -148,47 +207,82 @@ function moveHits(accuracy, attackerAccStage = 0, defenderEvaStage = 0) {
   return Math.random() * 100 < finalAccuracy;
 }
 
-// Get modified stat with stages (for critical hits, ignores unfavorable stages)
+// Get modified stat with stages
 function getModifiedStat(baseStat, stage, isCrit = false, isAttacker = true) {
-  // Clamp stage between -6 and +6
   stage = clampStatStage(stage);
   
   let effectiveStage = stage;
   
-  // Critical hits ignore unfavorable stat changes
   if (isCrit) {
     if (isAttacker && stage < 0) {
-      effectiveStage = 0; // Ignore negative attack stages
+      effectiveStage = 0;
     } else if (!isAttacker && stage > 0) {
-      effectiveStage = 0; // Ignore positive defense stages
+      effectiveStage = 0;
     }
   }
   
   return Math.floor(baseStat * STAT_STAGE_MULTIPLIERS[effectiveStage.toString()]);
 }
 
+// Determine number of hits for multi-hit move
+function getMultiHitCount(multihitData) {
+  if (!multihitData) return 1;
+  
+  const { min, max } = multihitData;
+  
+  // Fixed hit count (like Double Kick always hits 2x)
+  if (min === max) return min;
+  
+  // 2-5 hit moves: 35% for 2, 35% for 3, 15% for 4, 15% for 5
+  const roll = Math.random() * 100;
+  if (roll < 35) return 2;
+  if (roll < 70) return 3;
+  if (roll < 85) return 4;
+  return 5;
+}
+
 // Main damage calculation
 function calculateDamage(attacker, defender, move, options = {}) {
   const {
-    isCritOverride = null, // For testing specific scenarios
-    weatherBoost = 1 // Can pass 1.5 for boosted, 0.5 for reduced, 1 for neutral
+    isCritOverride = null,
+    weatherBoost = 1
   } = options;
+  
+  const moveData = getMoveData(move.name);
+  
+  // Handle OHKO moves
+  if (moveData.ohko) {
+    const hits = ohkoHits(attacker.level, defender.level);
+    if (hits) {
+      return {
+        damage: defender.currentHp,
+        isOHKO: true,
+        typeEffectiveness: 1,
+        hasSTAB: false,
+        isCrit: false
+      };
+    } else {
+      return {
+        damage: 0,
+        missed: true,
+        isOHKO: true,
+        typeEffectiveness: 1,
+        hasSTAB: false,
+        isCrit: false
+      };
+    }
+  }
   
   const level = attacker.level;
   const power = move.power;
-  
-  // Determine if physical or special (normalize to lowercase)
   const category = normalizeString(move.category);
   const isPhysical = category === 'physical';
   
-  // Check for critical hit
   const isCrit = isCritOverride !== null ? isCritOverride : isCriticalHit(move.critStage || 0);
   
-  // Ensure stat stages exist with default values
   const attackerStages = attacker.statStages || { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
   const defenderStages = defender.statStages || { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
   
-  // Get modified stats (critical hits ignore unfavorable stages)
   const attackStat = isPhysical ? 
     getModifiedStat(attacker.stats.atk, attackerStages.atk, isCrit, true) : 
     getModifiedStat(attacker.stats.spa, attackerStages.spa, isCrit, true);
@@ -196,105 +290,45 @@ function calculateDamage(attacker, defender, move, options = {}) {
     getModifiedStat(defender.stats.def, defenderStages.def, isCrit, false) : 
     getModifiedStat(defender.stats.spd, defenderStages.spd, isCrit, false);
   
-  // Base damage calculation
   let damage = Math.floor((2 * level / 5 + 2) * power * attackStat / defenseStat / 50) + 2;
   
-  // Critical hit (1.5x in modern gens)
   if (isCrit) {
     damage = Math.floor(damage * 1.5);
   }
   
-  // Random factor (85% to 100%)
   const randomFactor = (Math.floor(Math.random() * 16) + 85) / 100;
   damage = Math.floor(damage * randomFactor);
   
-  // STAB (1.5x)
   if (hasSTAB(move.type, attacker.types)) {
     damage = Math.floor(damage * 1.5);
   }
   
-  // Type effectiveness
   const typeEffectiveness = getTypeEffectiveness(move.type, defender.types);
   damage = Math.floor(damage * typeEffectiveness);
   
-  // Weather modifier (applied after type effectiveness)
   if (weatherBoost !== 1) {
     damage = Math.floor(damage * weatherBoost);
   }
   
-  // Burn halves physical damage (applied near the end)
   const status = normalizeString(attacker.statusCondition);
   if (status === 'burn' && isPhysical) {
     damage = Math.floor(damage / 2);
   }
   
-  // Minimum damage is 1
   damage = Math.max(1, damage);
+  
+  // Calculate recoil if applicable
+  let recoilDamage = 0;
+  if (moveData.recoil) {
+    recoilDamage = Math.max(1, Math.floor(damage * moveData.recoil));
+  }
   
   return {
     damage,
     isCrit,
     typeEffectiveness,
-    hasSTAB: hasSTAB(move.type, attacker.types)
-  };
-}
-
-// Calculate damage range (useful for showing min-max damage)
-function calculateDamageRange(attacker, defender, move, options = {}) {
-  const damages = [];
-  
-  // Ensure stat stages exist with default values
-  const attackerStages = attacker.statStages || { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
-  const defenderStages = defender.statStages || { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
-  
-  // Calculate for all 16 random rolls
-  for (let i = 0; i < 16; i++) {
-    const level = attacker.level;
-    const power = move.power;
-    const category = normalizeString(move.category);
-    const isPhysical = category === 'physical';
-    const isCrit = options.isCritOverride !== null ? options.isCritOverride : false;
-    
-    const attackStat = isPhysical ? 
-      getModifiedStat(attacker.stats.atk, attackerStages.atk, isCrit, true) : 
-      getModifiedStat(attacker.stats.spa, attackerStages.spa, isCrit, true);
-    const defenseStat = isPhysical ? 
-      getModifiedStat(defender.stats.def, defenderStages.def, isCrit, false) : 
-      getModifiedStat(defender.stats.spd, defenderStages.spd, isCrit, false);
-    
-    let damage = Math.floor((2 * level / 5 + 2) * power * attackStat / defenseStat / 50) + 2;
-    
-    if (isCrit) {
-      damage = Math.floor(damage * 1.5);
-    }
-    
-    const randomFactor = (85 + i) / 100;
-    damage = Math.floor(damage * randomFactor);
-    
-    if (hasSTAB(move.type, attacker.types)) {
-      damage = Math.floor(damage * 1.5);
-    }
-    
-    const typeEffectiveness = getTypeEffectiveness(move.type, defender.types);
-    damage = Math.floor(damage * typeEffectiveness);
-    
-    if (options.weatherBoost && options.weatherBoost !== 1) {
-      damage = Math.floor(damage * weatherBoost);
-    }
-    
-    const status = normalizeString(attacker.statusCondition);
-    if (status === 'burn' && isPhysical) {
-      damage = Math.floor(damage / 2);
-    }
-    
-    damage = Math.max(1, damage);
-    damages.push(damage);
-  }
-  
-  return {
-    min: Math.min(...damages),
-    max: Math.max(...damages),
-    damages
+    hasSTAB: hasSTAB(move.type, attacker.types),
+    recoilDamage
   };
 }
 
@@ -308,14 +342,16 @@ function getEffectivenessMessage(effectiveness) {
 
 module.exports = {
   calculateDamage,
-  calculateDamageRange,
   getTypeEffectiveness,
   moveHits,
+  ohkoHits,
   getEffectivenessMessage,
   isCriticalHit,
   hasSTAB,
   getModifiedStat,
   applyStatChanges,
   getStatChangeMessage,
-  clampStatStage
+  clampStatStage,
+  getMoveData,
+  getMultiHitCount
 };
