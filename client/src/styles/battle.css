@@ -42,21 +42,6 @@ body {
   overflow: hidden;
 }
 
-. battle-container::before {
-  content: '';
-  position: absolute;
-  inset: -50%;
-  background: 
-    radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 80% 50%, rgba(124, 58, 237, 0.15) 0%, transparent 50%);
-  animation: rotateGradient 20s linear infinite;
-  pointer-events: none;
-}
-
-@keyframes rotateGradient {
-  0% { transform:  rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
 
 /* Matchmaking & Searching States */
 .matchmaking, .searching {
@@ -85,7 +70,7 @@ body {
   }
 }
 
-. matchmaking:: before, .searching::before {
+.matchmaking::before, .searching::before {
   content: '';
   position:  absolute;
   inset: -3px;
@@ -101,7 +86,7 @@ body {
   50% { background-position: 100% 50%; }
 }
 
-. matchmaking::after, .searching:: after {
+.matchmaking::after,.searching::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -198,14 +183,7 @@ body {
   }
 }
 
-. battle-screen::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
-  border-radius: 32px;
-  pointer-events: none;
-}
+
 
 /* Pokemon Areas - UPDATED: Reduced margins for shorter layout */
 .pokemon-area {
@@ -223,7 +201,7 @@ body {
   overflow: hidden;
 }
 
-.pokemon-area:: before {
+.pokemon-area::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -233,7 +211,7 @@ body {
   pointer-events: none;
 }
 
-.pokemon-area:hover:: before {
+.pokemon-area:hover::before {
   opacity: 1;
 }
 
@@ -245,12 +223,12 @@ body {
   transform: translateY(-2px);
 }
 
-.pokemon-area. opponent {
+.pokemon-area.opponent {
   justify-content: flex-end;
   animation: slideInRight 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-. pokemon-area.player {
+.pokemon-area.player {
   justify-content: flex-start;
   animation: slideInLeft 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -293,7 +271,7 @@ body {
   transition: transform 0.4s ease;
 }
 
-.pokemon-sprite:: before {
+.pokemon-sprite::before {
   content: '';
   position: absolute;
   inset: -10px;
@@ -317,7 +295,7 @@ body {
   animation: floatOpponent 4s ease-in-out infinite;
 }
 
-. player-sprite {
+.player-sprite {
   animation: floatPlayer 4s ease-in-out infinite 2s;
 }
 
@@ -397,7 +375,7 @@ body {
   background:  linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, transparent 50%);
 }
 
-.hp-fill:: after {
+.hp-fill::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -438,7 +416,7 @@ body {
     inset 0 0 0 1px rgba(167, 139, 250, 0.1);
 }
 
-. log-entry {
+.log-entry {
   padding: 8px 15px; /* Reduced from 10px */
   margin-bottom: 6px; /* Reduced from 8px */
   border-left: 3px solid transparent;
@@ -469,7 +447,7 @@ body {
   margin-bottom: 0;
 }
 
-. battle-log: :-webkit-scrollbar {
+.battle-log::-webkit-scrollbar {
   width: 12px;
 }
 
@@ -537,11 +515,11 @@ body {
   transition: transform 0.6s ease;
 }
 
-.move-button:hover: not(:disabled)::before {
+.move-button:hover:not(:disabled)::before {
   transform: translateX(100%) skewX(-15deg);
 }
 
-.move-button:hover: not(:disabled) {
+.move-button:hover:not(:disabled) {
   background: linear-gradient(135deg, var(--purple-600) 0%, var(--purple-500) 100%);
   border-color: var(--purple-400);
   transform: translateY(-4px) scale(1.03);
@@ -551,11 +529,11 @@ body {
     0 0 40px var(--glow-purple);
 }
 
-.move-button:active: not(:disabled) {
+.move-button:active:not(:disabled) {
   transform: translateY(-2px) scale(1.01);
 }
 
-.move-button. selected {
+.move-button.selected {
   background: linear-gradient(135deg, var(--purple-900) 0%, var(--purple-800) 100%);
   border-color: var(--purple-300);
   box-shadow: 
@@ -574,14 +552,14 @@ body {
   }
 }
 
-.move-button: disabled {
+.move-button:disabled {
   opacity: 0.35;
   cursor: not-allowed;
   filter: grayscale(0.5);
   transform: none;
 }
 
-. action-buttons {
+.action-buttons {
   display: flex;
   gap: 30px; /* Increased from 20px for better spacing between Switch & Forfeit */
   justify-content: center;
@@ -605,7 +583,7 @@ body {
   min-width: 160px; /* Ensure minimum width */
 }
 
-.btn-primary:: before,
+.btn-primary::before,
 .btn-switch::before,
 .btn-forfeit::before,
 .btn-cancel::before {
@@ -617,10 +595,10 @@ body {
   transition: transform 0.6s ease;
 }
 
-.btn-primary:hover:: before,
-.btn-switch:hover: not(:disabled)::before,
-.btn-forfeit:hover:: before,
-.btn-cancel:hover:: before {
+.btn-primary:hover::before,
+.btn-switch:hover:not(:disabled)::before,
+.btn-forfeit:hover::before,
+.btn-cancel:hover::before {
   transform: translateX(100%) skewX(-15deg);
 }
 
@@ -679,7 +657,7 @@ body {
   border-color: #6b7280;
 }
 
-. btn-cancel:hover {
+.btn-cancel:hover {
   background: linear-gradient(135deg, #4b5563 0%, #6b7280 100%);
   border-color: #9ca3af;
   transform:  translateY(-4px) scale(1.05);
@@ -692,7 +670,7 @@ body {
   animation: fadeInScale 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-. switch-menu h3 {
+.switch-menu h3 {
   color: var(--purple-100);
   font-size: 1.9rem; /* Slightly reduced from 2rem */
   font-weight: 800;
@@ -742,7 +720,7 @@ body {
   box-shadow: 0 12px 35px rgba(124, 58, 237, 0.6), 0 0 40px var(--glow-purple);
 }
 
-.team-button. fainted {
+.team-button.fainted {
   background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
   border-color: #6b7280;
   opacity: 0.4;
@@ -771,11 +749,11 @@ body {
     height: 110px;
   }
 
-  . moves-grid {
+  .moves-grid {
     gap: 15px;
   }
 
-  . team-grid {
+  .team-grid {
     grid-template-columns: repeat(2, 1fr);
   }
   
@@ -794,14 +772,14 @@ body {
     transform: scaleY(1); /* Reset scale on mobile for better usability */
   }
 
-  . pokemon-area {
+  .pokemon-area {
     flex-direction: column;
     text-align: center;
     padding: 18px;
     margin-bottom: 20px;
   }
 
-  .pokemon-area. opponent,
+  .pokemon-area.opponent,
   .pokemon-area.player {
     justify-content: center;
   }
@@ -815,7 +793,7 @@ body {
     height: 100px;
   }
 
-  . pokemon-info {
+  .pokemon-info {
     max-width: 100%;
   }
 
@@ -866,7 +844,7 @@ body {
     font-size: 0.85rem;
   }
 
-  . battle-controls {
+  .battle-controls {
     padding:  20px;
   }
 
