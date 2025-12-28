@@ -116,15 +116,15 @@ const Dashboard = () => {
           <p className="welcome-text">Ready for your next battle?</p>
           <div className="stats-row">
             <div className="stat-box">
-              <div className="stat-value">1,247</div>
+              <div className="stat-value">N/A</div>
               <div className="stat-label">Total Battles</div>
             </div>
             <div className="stat-box">
-              <div className="stat-value">68%</div>
+              <div className="stat-value">N/A</div>
               <div className="stat-label">Win Rate</div>
             </div>
             <div className="stat-box">
-              <div className="stat-value">2,156</div>
+              <div className="stat-value">N/A</div>
               <div className="stat-label">ELO Rating</div>
             </div>
           </div>
