@@ -40,13 +40,15 @@ class BattleEngine {
             userId: player1.userId,
             username: player1.username,
             team: player1.team.map(p => this.initializePokemon(p)),
-            activePokemonIndex: 0
+            activePokemonIndex: 0,
+            needsForcedSwitch: false
           },
           {
             userId: player2.userId,
             username: player2.username,
             team: player2.team.map(p => this.initializePokemon(p)),
-            activePokemonIndex: 0
+            activePokemonIndex: 0,
+            needsForcedSwitch: false
           }
         ],
         status: 'active'
@@ -132,6 +134,36 @@ class BattleEngine {
     const player1 = battle.players[0];
     const player2 = battle.players[1];
     
+    // Check if either player needs a forced switch
+    if (player1.needsForcedSwitch || player2.needsForcedSwitch) {
+      console.log('Waiting for forced switch...');
+      
+      // Handle forced switches
+      if (player1.needsForcedSwitch && player1.switchTo !== undefined && player1.switchTo !== null) {
+        await this.executeSwitch(battle, 0);
+        player1.needsForcedSwitch = false;
+        player1.switchTo = null;
+      }
+      
+      if (player2.needsForcedSwitch && player2.switchTo !== undefined && player2.switchTo !== null) {
+        await this.executeSwitch(battle, 1);
+        player2.needsForcedSwitch = false;
+        player2.switchTo = null;
+      }
+      
+      // If both have switched or only one needed to switch, reset and continue
+      if (!player1.needsForcedSwitch && !player2.needsForcedSwitch) {
+        player1.selectedMove = null;
+        player1.ready = false;
+        player2.selectedMove = null;
+        player2.ready = false;
+        battle.turn += 1;
+      }
+      
+      await battle.save();
+      return battle;
+    }
+    
     const actions = [];
     
     if (player1.switchTo !== undefined && player1.switchTo !== null) {
@@ -181,25 +213,60 @@ class BattleEngine {
     
     // Execute actions
     for (const action of actions) {
+      // Skip if Pokemon fainted
+      const actingPokemon = battle.players[action.player].team[battle.players[action.player].activePokemonIndex];
+      if (actingPokemon.fainted) {
+        console.log(`${actingPokemon.nickname} has fainted, skipping action`);
+        continue;
+      }
+      
       if (action.type === 'switch') {
         await this.executeSwitch(battle, action.player);
       } else if (action.type === 'move') {
         await this.executeMove(battle, action.player);
       }
       
+      // Check if battle ended
       if (battle.checkBattleEnd()) {
         await battle.save();
         return battle;
       }
+      
+      // Check if opponent needs forced switch
+      const opponentIndex = 1 - action.player;
+      const opponent = battle.players[opponentIndex];
+      const opponentActive = opponent.team[opponent.activePokemonIndex];
+      
+      if (opponentActive.fainted) {
+        const hasAvailable = opponent.team.some(p => !p.fainted);
+        
+        if (hasAvailable) {
+          opponent.needsForcedSwitch = true;
+          
+          if (this.logService) {
+            await this.logService.info(battle.battleId, battle.turn,
+              `${opponent.username} must switch Pokemon!`);
+          } else {
+            battle.addLog(`${opponent.username} must switch Pokemon!`);
+          }
+          
+          // Save and return - wait for switch
+          await battle.save();
+          return battle;
+        }
+      }
     }
     
-    battle.players[0].selectedMove = null;
-    battle.players[0].switchTo = null;
-    battle.players[0].ready = false;
-    battle.players[1].selectedMove = null;
-    battle.players[1].switchTo = null;
-    battle.players[1].ready = false;
-    battle.turn += 1;
+    // Reset selections and increment turn only if no forced switches
+    if (!player1.needsForcedSwitch && !player2.needsForcedSwitch) {
+      player1.selectedMove = null;
+      player1.switchTo = null;
+      player1.ready = false;
+      player2.selectedMove = null;
+      player2.switchTo = null;
+      player2.ready = false;
+      battle.turn += 1;
+    }
     
     await battle.save();
     return battle;
@@ -313,7 +380,7 @@ class BattleEngine {
       }
       
       defendingPokemon.fainted = true;
-      await this.checkBattleEnd(battle, attacker, defender, defendingPokemon);
+      await this.checkBattleEnd(battle, attacker, defender);
       return;
     }
     
@@ -403,7 +470,7 @@ class BattleEngine {
         battle.addLog(`${defendingPokemon.nickname} fainted!`);
       }
       
-      await this.checkBattleEnd(battle, attacker, defender, defendingPokemon);
+      await this.checkBattleEnd(battle, attacker, defender);
     }
   }
   
@@ -450,7 +517,7 @@ class BattleEngine {
     }
   }
   
-  static async checkBattleEnd(battle, attacker, defender, faintedPokemon) {
+  static async checkBattleEnd(battle, attacker, defender) {
     const hasAvailable = defender.team.some(p => !p.fainted);
     
     if (!hasAvailable) {
@@ -471,33 +538,39 @@ class BattleEngine {
     
     if (playerIndex === -1) return null;
     
+    const player = battle.players[playerIndex];
+    const opponent = battle.players[opponentIndex];
+    
     return {
       battleId: battle.battleId,
       turn: battle.turn,
       status: battle.status,
       winner: battle.winner,
+      needsForcedSwitch: player.needsForcedSwitch || false,
       player: {
-        username: battle.players[playerIndex].username,
-        activePokemon: battle.players[playerIndex].team[battle.players[playerIndex].activePokemonIndex],
-        team: battle.players[playerIndex].team.map(p => ({
+        username: player.username,
+        activePokemon: player.team[player.activePokemonIndex],
+        team: player.team.map(p => ({
           name: p.name,
           nickname: p.nickname,
           currentHp: p.currentHp,
           maxHp: p.maxHp,
-          fainted: p.fainted
+          fainted: p.fainted,
+          statStages: p.statStages
         }))
       },
       opponent: {
-        username: battle.players[opponentIndex].username,
+        username: opponent.username,
         activePokemon: {
-          name: battle.players[opponentIndex].team[battle.players[opponentIndex].activePokemonIndex].name,
-          nickname: battle.players[opponentIndex].team[battle.players[opponentIndex].activePokemonIndex].nickname,
-          currentHp: battle.players[opponentIndex].team[battle.players[opponentIndex].activePokemonIndex].currentHp,
-          maxHp: battle.players[opponentIndex].team[battle.players[opponentIndex].activePokemonIndex].maxHp,
-          types: battle.players[opponentIndex].team[battle.players[opponentIndex].activePokemonIndex].types,
-          level: battle.players[opponentIndex].team[battle.players[opponentIndex].activePokemonIndex].level
+          name: opponent.team[opponent.activePokemonIndex].name,
+          nickname: opponent.team[opponent.activePokemonIndex].nickname,
+          currentHp: opponent.team[opponent.activePokemonIndex].currentHp,
+          maxHp: opponent.team[opponent.activePokemonIndex].maxHp,
+          types: opponent.team[opponent.activePokemonIndex].types,
+          level: opponent.team[opponent.activePokemonIndex].level,
+          fainted: opponent.team[opponent.activePokemonIndex].fainted
         },
-        team: battle.players[opponentIndex].team.map(p => ({
+        team: opponent.team.map(p => ({
           name: p.name,
           nickname: p.nickname,
           fainted: p.fainted

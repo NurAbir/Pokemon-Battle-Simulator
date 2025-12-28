@@ -32,7 +32,7 @@ const battlePokemonSchema = new mongoose.Schema({
 
 const playerSchema = new mongoose.Schema({
   userId: { 
-    type: String,  // CHANGED: Use String instead of ObjectId
+    type: String,
     required: true 
   },
   username: { type: String, required: true },
@@ -40,7 +40,8 @@ const playerSchema = new mongoose.Schema({
   activePokemonIndex: { type: Number, default: 0 },
   selectedMove: { type: String, default: null },
   switchTo: { type: Number, default: null },
-  ready: { type: Boolean, default: false }
+  ready: { type: Boolean, default: false },
+  needsForcedSwitch: { type: Boolean, default: false }  // ADDED: Track forced switch state
 });
 
 const battleSchema = new mongoose.Schema({
@@ -66,7 +67,7 @@ const battleSchema = new mongoose.Schema({
   },
   turn: { type: Number, default: 1 },
   winner: { 
-    type: String,  // CHANGED: Use String instead of ObjectId
+    type: String,
     default: null 
   },
   battleLog: [String]

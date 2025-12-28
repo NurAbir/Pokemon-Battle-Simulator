@@ -188,7 +188,7 @@ function isCriticalHit(critStage = 0) {
 // Check OHKO move hits (level-based accuracy)
 function ohkoHits(attackerLevel, defenderLevel) {
   if (attackerLevel < defenderLevel) return false;
-  const accuracy = 30 + (attackerLevel - defenderLevel);
+  const accuracy = 30 ;
   return Math.random() * 100 < accuracy;
 }
 

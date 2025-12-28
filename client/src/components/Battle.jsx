@@ -236,6 +236,14 @@ const Battle = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battleState?.player?.activePokemon?.name, battleState?.opponent?.activePokemon?.name]);
 
+  // Auto-open switch menu if forced switch is needed
+  useEffect(() => {
+    if (battleState?.needsForcedSwitch) {
+      setShowSwitchMenu(true);
+      setSelectedMove(null); // Clear any selected move
+    }
+  }, [battleState?.needsForcedSwitch]);
+
   const handleJoinMatchmaking = () => {
     if (!userId || !teamId) {
       alert('Please select a team first');
@@ -250,7 +258,7 @@ const Battle = () => {
   };
 
   const handleSelectMove = (moveName) => {
-    if (!battleState || selectedMove) return;
+    if (!battleState || selectedMove || battleState.needsForcedSwitch) return;
     
     console.log('Selecting move:', moveName);
     setSelectedMove(moveName);
@@ -316,6 +324,8 @@ const Battle = () => {
       </div>
     );
   }
+
+  const isForcedSwitch = battleState.needsForcedSwitch;
 
   return (
     <div className="battle-container">
@@ -440,7 +450,7 @@ const Battle = () => {
                     key={index}
                     className={`move-button ${selectedMove === move ? 'selected' : ''}`}
                     onClick={() => handleSelectMove(move)}
-                    disabled={selectedMove !== null}
+                    disabled={selectedMove !== null || isForcedSwitch}
                   >
                     {move}
                   </button>
@@ -450,7 +460,7 @@ const Battle = () => {
                 <button 
                   className="btn-switch"
                   onClick={() => setShowSwitchMenu(true)}
-                  disabled={selectedMove !== null}
+                  disabled={selectedMove !== null || isForcedSwitch}
                 >
                   Switch
                 </button>
@@ -461,7 +471,7 @@ const Battle = () => {
             </>
           ) : (
             <div className="switch-menu">
-              <h3>Choose a Pokemon</h3>
+              <h3>{isForcedSwitch ? 'Choose your next Pokémon!' : 'Choose a Pokemon'}</h3>
               <div className="team-grid">
                 {battleState.player.team.map((pokemon, index) => (
                   <button
@@ -477,12 +487,14 @@ const Battle = () => {
                   </button>
                 ))}
               </div>
-              <button 
-                className="btn-cancel"
-                onClick={() => setShowSwitchMenu(false)}
-              >
-                Cancel
-              </button>
+              {!isForcedSwitch && (
+                <button 
+                  className="btn-cancel"
+                  onClick={() => setShowSwitchMenu(false)}
+                >
+                  Cancel
+                </button>
+              )}
             </div>
           )}
         </div>

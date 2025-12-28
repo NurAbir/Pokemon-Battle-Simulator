@@ -441,100 +441,161 @@ module.exports = (io) => {
     });
     
     // Switch Pokemon
-    socket.on('switchPokemon', async ({ battleId, userId, pokemonIndex }) => {
-      try {
-        const battle = await Battle.findOne({ battleId, status: 'active' });
-        if (!battle) {
-          socket.emit('error', { message: 'Battle not found' });
-          return;
+    // Switch Pokemon - REPLACE THE EXISTING switchPokemon HANDLER
+socket.on('switchPokemon', async ({ battleId, userId, pokemonIndex }) => {
+  try {
+    const battle = await Battle.findOne({ battleId, status: 'active' });
+    if (!battle) {
+      socket.emit('error', { message: 'Battle not found' });
+      return;
+    }
+    
+    // Compare userId as strings
+    const playerIndex = battle.players.findIndex(p => p.userId === userId);
+    if (playerIndex === -1) {
+      socket.emit('error', { message: 'Not in this battle' });
+      return;
+    }
+    
+    const player = battle.players[playerIndex];
+    const targetPokemon = player.team[pokemonIndex];
+    
+    if (!targetPokemon || targetPokemon.fainted) {
+      socket.emit('error', { message: 'Cannot switch to that Pokemon' });
+      return;
+    }
+    
+    // Set switch target
+    player.switchTo = pokemonIndex;
+    player.ready = true;
+    
+    // Check if this is a forced switch
+    const isForcedSwitch = player.needsForcedSwitch;
+    
+    await battle.save();
+    
+    // Mark player ready in timer
+    turnTimerManager.markReady(battleId, userId);
+    
+    const battleInfo = activeBattles.get(battleId);
+    if (battleInfo) {
+      io.to(battleInfo.room).emit('playerReady', { 
+        playerIndex,
+        userId,
+        ready: true 
+      });
+    }
+    
+    // If forced switch, process immediately without waiting for opponent
+    if (isForcedSwitch) {
+      console.log('Processing forced switch for player', playerIndex);
+      
+      // Process the turn (which will handle the forced switch)
+      const updatedBattle = await BattleEngine.processTurn(battle);
+      
+      // Get full log
+      const fullLog = await battleLogService.getFullLog(battleId);
+      
+      const state1 = BattleEngine.getBattleState(updatedBattle, battle.players[0].userId);
+      const state2 = BattleEngine.getBattleState(updatedBattle, battle.players[1].userId);
+      state1.battleLog = fullLog;
+      state2.battleLog = fullLog;
+      
+      if (battleInfo) {
+        const sockets = Array.from(io.sockets.adapter.rooms.get(battleInfo.room) || []);
+        const socket1 = io.sockets.sockets.get(sockets[0]);
+        const socket2 = io.sockets.sockets.get(sockets[1]);
+        
+        if (socket1 && socket2) {
+          socket1.emit('battleUpdate', state1);
+          socket2.emit('battleUpdate', state2);
         }
-        
-        // Compare userId as strings
-        const playerIndex = battle.players.findIndex(p => p.userId === userId);
-        if (playerIndex === -1) {
-          socket.emit('error', { message: 'Not in this battle' });
-          return;
-        }
-        
-        const targetPokemon = battle.players[playerIndex].team[pokemonIndex];
-        if (!targetPokemon || targetPokemon.fainted) {
-          socket.emit('error', { message: 'Cannot switch to that Pokemon' });
-          return;
-        }
-        
-        // Set switch target
-        battle.players[playerIndex].switchTo = pokemonIndex;
-        battle.players[playerIndex].ready = true;
-        await battle.save();
-        
-        // Mark player ready in timer
-        turnTimerManager.markReady(battleId, userId);
-        
-        const battleInfo = activeBattles.get(battleId);
-        if (battleInfo) {
-          io.to(battleInfo.room).emit('playerReady', { 
-            playerIndex,
-            userId,
-            ready: true 
-          });
-        }
-        
-        // Check if both players ready
-        if (battle.players.every(p => p.ready)) {
-          // Log turn start
-          await battleLogService.turnStart(battleId, battle.turn);
-          
-          const updatedBattle = await BattleEngine.processTurn(battle);
-          
-          // Get full log
-          const fullLog = await battleLogService.getFullLog(battleId);
-          
-          const state1 = BattleEngine.getBattleState(updatedBattle, battle.players[0].userId);
-          const state2 = BattleEngine.getBattleState(updatedBattle, battle.players[1].userId);
-          state1.battleLog = fullLog;
-          state2.battleLog = fullLog;
-          
-          if (battleInfo) {
-            const sockets = Array.from(io.sockets.adapter.rooms.get(battleInfo.room) || []);
-            const socket1 = io.sockets.sockets.get(sockets[0]);
-            const socket2 = io.sockets.sockets.get(sockets[1]);
-            
-            if (socket1 && socket2) {
-              socket1.emit('battleUpdate', state1);
-              socket2.emit('battleUpdate', state2);
-            }
-          }
-          
-          if (updatedBattle.status === 'completed') {
-            if (battleInfo) {
-              io.to(battleInfo.room).emit('battleEnd', {
-                winner: updatedBattle.winner,
-                battleLog: fullLog
-              });
-              
-              // Send battle result notifications
-              await sendBattleResultNotifications(io, updatedBattle);
-              
-              // Archive battle chat
-              const winnerUsername = updatedBattle.players.find(p => p.userId === updatedBattle.winner)?.username;
-              await archiveBattleChat(io, battleId, updatedBattle.winner, winnerUsername);
-              
-              // Cleanup
-              turnTimerManager.endBattle(battleId);
-              activeBattles.delete(battleId);
-            }
-          } else {
-            // Start timer for next turn
-            turnTimerManager.startTurn(battleId, updatedBattle.turn, async (timedOutUserId) => {
-              await handlePlayerTimeout(io, battleId, timedOutUserId);
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Switch error:', error);
-        socket.emit('error', { message: 'Failed to switch Pokemon' });
       }
-    });
+      
+      if (updatedBattle.status === 'completed') {
+        if (battleInfo) {
+          io.to(battleInfo.room).emit('battleEnd', {
+            winner: updatedBattle.winner,
+            battleLog: fullLog
+          });
+          
+          // Send battle result notifications
+          await sendBattleResultNotifications(io, updatedBattle);
+          
+          // Archive battle chat
+          const winnerUsername = updatedBattle.players.find(p => p.userId === updatedBattle.winner)?.username;
+          await archiveBattleChat(io, battleId, updatedBattle.winner, winnerUsername);
+          
+          // Cleanup
+          turnTimerManager.endBattle(battleId);
+          activeBattles.delete(battleId);
+        }
+      } else {
+        // Start timer for next turn
+        turnTimerManager.startTurn(battleId, updatedBattle.turn, async (timedOutUserId) => {
+          await handlePlayerTimeout(io, battleId, timedOutUserId);
+        });
+      }
+      
+      return; // Exit early - forced switch handled
+    }
+    
+    // Normal switch - check if both players ready
+    if (battle.players.every(p => p.ready)) {
+      // Log turn start
+      await battleLogService.turnStart(battleId, battle.turn);
+      
+      const updatedBattle = await BattleEngine.processTurn(battle);
+      
+      // Get full log
+      const fullLog = await battleLogService.getFullLog(battleId);
+      
+      const state1 = BattleEngine.getBattleState(updatedBattle, battle.players[0].userId);
+      const state2 = BattleEngine.getBattleState(updatedBattle, battle.players[1].userId);
+      state1.battleLog = fullLog;
+      state2.battleLog = fullLog;
+      
+      if (battleInfo) {
+        const sockets = Array.from(io.sockets.adapter.rooms.get(battleInfo.room) || []);
+        const socket1 = io.sockets.sockets.get(sockets[0]);
+        const socket2 = io.sockets.sockets.get(sockets[1]);
+        
+        if (socket1 && socket2) {
+          socket1.emit('battleUpdate', state1);
+          socket2.emit('battleUpdate', state2);
+        }
+      }
+      
+      if (updatedBattle.status === 'completed') {
+        if (battleInfo) {
+          io.to(battleInfo.room).emit('battleEnd', {
+            winner: updatedBattle.winner,
+            battleLog: fullLog
+          });
+          
+          // Send battle result notifications
+          await sendBattleResultNotifications(io, updatedBattle);
+          
+          // Archive battle chat
+          const winnerUsername = updatedBattle.players.find(p => p.userId === updatedBattle.winner)?.username;
+          await archiveBattleChat(io, battleId, updatedBattle.winner, winnerUsername);
+          
+          // Cleanup
+          turnTimerManager.endBattle(battleId);
+          activeBattles.delete(battleId);
+        }
+      } else {
+        // Start timer for next turn
+        turnTimerManager.startTurn(battleId, updatedBattle.turn, async (timedOutUserId) => {
+          await handlePlayerTimeout(io, battleId, timedOutUserId);
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Switch error:', error);
+    socket.emit('error', { message: 'Failed to switch Pokemon' });
+  }
+});
     
     // Forfeit battle
     socket.on('forfeit', async ({ battleId, userId }) => {
