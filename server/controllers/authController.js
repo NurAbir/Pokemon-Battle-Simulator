@@ -2,7 +2,7 @@ const User = require('../models/User');
 const Statistics = require('../models/Statistics');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
-const generateId = require('../utils/generateId');
+const { generateId }= require('../utils/generateId');
 require('dotenv').config();
 
 const transporter = nodemailer.createTransport({
