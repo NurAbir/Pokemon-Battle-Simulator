@@ -69,6 +69,7 @@ module.exports = (io, socket) => {
     try {
       if (!roomId || !userId || !content) {
         socket.emit('chatError', { message: 'Missing required fields' });
+        console.log(`${roomId}, ${userId}, ${content}`);
         return;
       }
       
