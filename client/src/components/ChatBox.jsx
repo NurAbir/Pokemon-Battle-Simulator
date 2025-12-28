@@ -414,7 +414,7 @@ const ChatBox = () => {
                   onClick={() => loadPrivateChat(chat.participant.userId)}
                 >
                   <img
-                    src={chat.participant.avatar || 'https://hwchamber.co.uk/wp-content/uploads/2022/04/avatar-placeholder.gif'}
+                    src={chat.participant.avatar ? `${process.env.REACT_APP_API_URL}${chat.participant.avatar}` : 'https://hwchamber.co.uk/wp-content/uploads/2022/04/avatar-placeholder.gif'}
                     alt={chat.participant.username}
                     className="chat-avatar"
                   />
