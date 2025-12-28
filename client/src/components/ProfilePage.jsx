@@ -14,7 +14,7 @@ const ProfilePage = () => {
   const [bioInput, setBioInput] = useState('');
   const navigate = useNavigate();
 
-  const API_URL = 'http://localhost:5000/api';
+  const API_URL = `${process.env.REACT_APP_API_URL}/api`;
   const token = localStorage.getItem('token');
   
   
@@ -160,7 +160,7 @@ const ProfilePage = () => {
           <div className="avatar-section">
             <div className="avatar-wrapper">
               <img 
-                   src={user.avatar ? `http://localhost:5000${user.avatar}` : 'https://hwchamber.co.uk/wp-content/uploads/2022/04/avatar-placeholder.gif'} 
+                   src={user.avatar ? `${process.env.REACT_APP_API_URL}${user.avatar}` : 'https://hwchamber.co.uk/wp-content/uploads/2022/04/avatar-placeholder.gif'} 
                    alt="Profile" 
                    className="avatar-img"
               />

@@ -22,7 +22,7 @@ const Dashboard = () => {
     const fetchUserProfile = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:5000/api/user/profile', {
+        const response = await fetch(`${process.env.REACT_APP_API_URL}/user/profile`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const result = await response.json();

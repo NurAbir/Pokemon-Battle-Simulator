@@ -47,7 +47,7 @@ const NotificationBoard = () => {
   const fetchTeams = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/teams', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/teams`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
