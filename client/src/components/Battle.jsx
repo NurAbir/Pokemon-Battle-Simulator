@@ -180,7 +180,7 @@ const Battle = () => {
       const message = reason === 'forfeit' 
         ? (isWinner ? 'Opponent forfeited!' : 'You forfeited.')
         : reason === 'timeout'
-          ? (isWinner ? 'Opponent timed out!' : 'You timed out.')
+          ? (isWinner ? 'Opponent timed out!(Win)' : 'You timed out.(Loss)')
           : (isWinner ? 'You won!' : 'You lost!');
       
       alert(message);
