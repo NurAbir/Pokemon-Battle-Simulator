@@ -1,7 +1,14 @@
-const generateId = (prefix) => {
-  const timestamp = Date.now().toString(36);
-  const randomStr = Math.random().toString(36).substring(2, 9);
-  return `${prefix}_${timestamp}${randomStr}`;
-};
+// utils/generateId.js
 
-module.exports = generateId;
+/**
+ * Generate a unique ID with a prefix
+ * @param {string} prefix - Prefix for the ID (e.g., 'user', 'team', 'battle')
+ * @returns {string} Generated ID like 'user_abc123xyz'
+ */
+function generateId(prefix = 'id') {
+  const timestamp = Date.now().toString(36);
+  const randomStr = Math.random().toString(36).substring(2, 15);
+  return `${prefix}_${timestamp}${randomStr}`;
+}
+
+module.exports = { generateId };
