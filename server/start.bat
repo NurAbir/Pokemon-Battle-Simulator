@@ -1,0 +1,9 @@
+@echo off
+echo ##### 1/3 ###### Setting PowerShell execution policy...
+powershell -Command "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass"
+
+echo ##### 2/3 ###### Installing dependencies...
+call npm install || exit /b
+
+echo ##### 3/3 ###### Starting app...
+call npm start

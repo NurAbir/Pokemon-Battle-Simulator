@@ -66,6 +66,10 @@ exports.createBattle = async (req, res) => {
     const team1 = await Team.findById(team1Id).populate('userId');
     const team2 = await Team.findById(team2Id).populate('userId');
 
+    if (!team1?.userId || !team2?.userId) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
     if (!team1 || !team2) {
       return res.status(404).json({ success: false, message: 'Team not found' });
     }
@@ -80,6 +84,7 @@ exports.createBattle = async (req, res) => {
       battleId,
       players: [
         {
+          _id: team1.userId._id.toString(),
           userId: player1,
           username: team1.userId.username,
           team: team1.pokemon.map(p => createBattlePokemon(p)),
@@ -87,6 +92,7 @@ exports.createBattle = async (req, res) => {
           ready: false
         },
         {
+          _id: team2.userId._id.toString(),
           userId: player2,
           username: team2.userId.username,
           team: team2.pokemon.map(p => createBattlePokemon(p)),
@@ -167,6 +173,64 @@ exports.submitAction = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+exports.getActiveBattles = async (req, res) => {
+  try {
+    const battles = await Battle.find({ status: 'active' })
+      .select('battleId players.username turn createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({
+      success: true,
+      battles: battles.map(b => ({
+        battleId: b.battleId,
+        players: b.players,
+        turn: b.turn || 1,
+        createdAt: b.createdAt
+      }))
+    });
+  } catch (error) {
+    console.error('Get active battles error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+exports.getBattleLog = async (req, res) => {
+  try {
+    const { battleId } = req.params;
+
+    const battleExists = await Battle.findOne({ battleId });
+    if (!battleExists) {
+      return res.status(404).json({ success: false, message: 'Battle not found' });
+    }
+
+    const log = await require('../models/BattleLog').getBattleLog(battleId);
+
+    res.json({
+      success: true,
+      log
+    });
+  } catch (error) {
+    console.error('Get battle log error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch log' });
+  }
+};
+
+
+exports.getActiveBattles = async (req, res) => {
+  const battles = await Battle.find({ status: 'active' })
+    .select('battleId players.username turn createdAt')
+    .lean();
+  res.json({ success: true, battles });
+};
+
+exports.getBattleLog = async (req, res) => {
+  const { battleId } = req.params;
+  const log = await BattleLog.getBattleLog(battleId);
+  res.json({ success: true, log });
+};
+
 
 // Forfeit battle
 exports.forfeitBattle = async (req, res) => {
@@ -251,6 +315,8 @@ function formatBattleState(battle, userId) {
       ready: battle.players[playerIndex].ready
     },
     opponent: {
+      userId: battle.players[opponentIndex].userId,        // Keep custom userId if needed elsewhere
+      _id: battle.players[opponentIndex]._id,
       username: battle.players[opponentIndex].username,
       activePokemon: battle.getActivePokemon(opponentIndex),
       team: battle.players[opponentIndex].team.map(p => ({
@@ -265,3 +331,46 @@ function formatBattleState(battle, userId) {
     winner: battle.winner
   };
 }
+
+// ADMIN: Get all currently active battles
+exports.getActiveBattles = async (req, res) => {
+  try {
+    const battles = await Battle.find({ status: 'active' })
+      .select('battleId players.username turn createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formatted = battles.map(b => ({
+      battleId: b.battleId,
+      players: b.players.map(p => ({ username: p.username })),
+      turn: b.turn || 1,
+      createdAt: b.createdAt
+    }));
+
+    res.json({ success: true, battles: formatted });
+  } catch (error) {
+    console.error('getActiveBattles error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// ADMIN: Get full battle log
+exports.getBattleLog = async (req, res) => {
+  try {
+    const { battleId } = req.params;
+
+    // Verify battle exists
+    const battle = await Battle.findOne({ battleId });
+    if (!battle) {
+      return res.status(404).json({ success: false, message: 'Battle not found' });
+    }
+
+    const BattleLog = require('../models/BattleLog');
+    const log = await BattleLog.getBattleLog(battleId);
+
+    res.json({ success: true, log });
+  } catch (error) {
+    console.error('getBattleLog error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load log' });
+  }
+};

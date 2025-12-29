@@ -113,6 +113,39 @@ const Battle = () => {
     setShowWarning(false);
   }, []);
 
+const handleReport = async () => {
+  if (!battleState?.opponent?.userId) {
+    alert("Cannot report: opponent not loaded yet.");
+    return;
+  }
+
+  if (window.confirm("Report opponent for misconduct? This will flag them for admin review.")) {
+    const token = localStorage.getItem('token');
+    const reporterName = localStorage.getItem('username') || 'Anonymous';
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/user/report-by-userid/${battleState.opponent.userId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reportedBy: reporterName })
+      });
+
+      if (res.ok) {
+        alert("Opponent reported successfully. Thank you.");
+      } else {
+        const data = await res.json();
+        alert("Failed to report: " + (data.message || "Server error"));
+      }
+    } catch (err) {
+      console.error("Report error:", err);
+      alert("Network error while reporting.");
+    }
+  }
+};
+
   // Handle warnings
   const handleBattleWarning = useCallback((data) => {
     setShowWarning(true);
@@ -467,6 +500,7 @@ const Battle = () => {
                 <button className="btn-forfeit" onClick={handleForfeit}>
                   Forfeit
                 </button>
+<button className="btn-report" onClick={handleReport}>🚩 Report Opponent</button>
               </div>
             </>
           ) : (
@@ -498,6 +532,38 @@ const Battle = () => {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+};
+
+const BattleSummaryModal = ({ data, onExit }) => {
+  if (!data) return null;
+  const isWinner = data.winner === localStorage.getItem('userId');
+
+  return (
+    <div className="summary-overlay">
+      <div className={`summary-card ${isWinner ? 'win' : 'lose'}`}>
+        <div className="summary-header">
+          <h2>{isWinner ? '🏆 VICTORY!' : '💀 DEFEAT'}</h2>
+          <p>{data.reason}</p>
+        </div>
+        
+        <div className="summary-body">
+          <div className="elo-change">
+            <span className="elo-label">ELO ADJUSTMENT</span>
+            <span className={`elo-value ${isWinner ? 'plus' : 'minus'}`}>
+              {isWinner ? '+' : ''}{data.eloChange}
+            </span>
+          </div>
+          
+          <div className="summary-stats">
+            <p><strong>Total Turns:</strong> {data.turns}</p>
+            <p><strong>Winner:</strong> {data.winnerUsername}</p>
+          </div>
+        </div>
+
+        <button className="summary-exit" onClick={onExit}>Return to Dashboard</button>
       </div>
     </div>
   );

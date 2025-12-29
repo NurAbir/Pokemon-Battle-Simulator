@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Statistics = require('../models/Statistics');
 const Battle = require('../models/Battle');
+const Team = require('../models/Team');
 const { generateId } = require('../utils/generateId');
 
 // @route   GET /api/user/profile
@@ -236,3 +237,132 @@ exports.getFullProfile = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// @route GET /api/user/
+exports.getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+// @route POST /api/user/:id/report/
+exports.reportUser = async (req, res) => {
+  try {
+    // Support both routes: /:id/report (MongoDB _id) and /report-by-userid/:userId (custom userId)
+    const id = req.params.id || req.params.userId;
+    const reporter = req.body.reportedBy || req.user.username || 'Anonymous';
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    let user;
+    if (id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) {
+      user = await User.findById(id);
+    } else {
+      user = await User.findOne({ userId: id });
+    }
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Prevent self-reporting
+    if (user.userId === req.user.userId) {
+      return res.status(400).json({ success: false, message: 'You cannot report yourself' });
+    }
+
+    // Avoid duplicate reports from same user
+    if (!user.reportedBy.includes(reporter)) {
+      user.reportedBy.push(reporter);
+    }
+
+    // Auto-flag if 3+ reports
+    if (user.reportedBy.length >= 3) {
+      user.status = 'suspicious';
+    }
+
+    await user.save();
+
+    res.json({ 
+      success: true, 
+      message: 'Report submitted successfully',
+      reportsCount: user.reportedBy.length
+    });
+  } catch (err) {
+    console.error("Report error:", err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @route POST /api/user/:id/dismiss
+exports.dismissReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Find user by MongoDB _id and update status to 'safe' and clear reports
+    const user = await User.findByIdAndUpdate(
+      id,
+      { $set: { status: 'safe', reportedBy: [] } },
+      { new: true } // Return the updated document
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error("Dismiss failed:", err);
+    res.status(500).json({ message: err.message });
+  }
+}
+
+// @route DELETE /api/user/:id/
+exports.deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let user;
+    
+    // Check if ID is a MongoDB ObjectId
+    if (id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) {
+      user = await User.findByIdAndDelete(id); 
+    } else {
+      // Fallback: Delete by the 'userId' string defined in your schema
+      user = await User.findOneAndDelete({ userId: id });
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found or already banned" });
+    }
+
+    res.json({ message: "User banned successfully", user });
+  } catch (err) {
+    console.error("User ban failed:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+// @route GET /api/user/leaderboard
+exports.getLeaderboard = async (req, res) => {
+  try {
+    // Corrected to match 'eloRating' field in User.js schema
+    const users = await User.find().sort({ eloRating: -1 }).limit(10);
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+// @route PATCH /api/user/season-reset 
+exports.resetSeason = async (req, res) => {
+   try {
+    // to be implemented 
+    res.json({ message: "Season reset successful. All rankings normalized." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}

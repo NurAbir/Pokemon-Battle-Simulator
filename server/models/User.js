@@ -43,7 +43,14 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  status: { type: String, enum: ['safe', 'suspicious', 'battling'], default: 'safe' },
+  activity: String,
+  reportedBy: [String],
   isBanned: {
+    type: Boolean,
+    default: false
+  },
+isAdmin: {
     type: Boolean,
     default: false
   },

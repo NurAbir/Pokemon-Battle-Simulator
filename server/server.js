@@ -53,7 +53,7 @@ const chatRoutes = require('./routes/chat');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
-app.use('/api/user', userRoutes);
+app.use('/api/user', userRoutes); // ** /users -> /user
 app.use('/api/teams', teamRoutes);
 app.use('/api/battles', battleRoutes);
 app.use('/api/notifications', notificationRoutes);

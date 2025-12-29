@@ -2,22 +2,35 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import socketService from '../services/socketService';
 import { getUnreadCount } from '../services/api';
+import AdminPanel from './AdminPanel';
 import '../styles/Dashboard.css';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [selectedMode, setSelectedMode] = useState('normal');
   const [user, setUser] = useState(null);
+  const [showAdminModal, setShowAdminModal] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [leaderboard, setLeaderboard] = useState([]);
 
-  const leaderboard = [
-    { username: 'DragonMaster', elo: 2450, avatar: '🐉' },
-    { username: 'PikachuFan88', elo: 2380, avatar: '⚡' },
-    { username: 'MewtwoKing', elo: 2315, avatar: '🔮' },
-    { username: 'CharizardChamp', elo: 2290, avatar: '🔥' },
-    { username: 'GyaradosLord', elo: 2265, avatar: '🌊' }
-  ];
+  // --- LEADERBOARD LOGIC (Maintained) ---
+  useEffect(() => {
+    const fetchLeaderboard = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('http://localhost:5000/api/user/leaderboard', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        setLeaderboard(data);
+      } catch (error) {
+        console.error('Leaderboard fetch failed:', error);
+      }
+    };
+    fetchLeaderboard();
+  }, []);
 
+  // --- USER PROFILE & NOTIFICATION LOGIC (Restored from Dashboard_1) ---
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
@@ -66,9 +79,7 @@ const Dashboard = () => {
   }, []);
 
   const handleLogout = () => {
-    if (user) {
-      socketService.leaveNotificationRoom(user.userId);
-    }
+    if (user) socketService.leaveNotificationRoom(user.userId);
     socketService.disconnect();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -77,7 +88,6 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-container">
-      {/* Header */}
       <header className="dashboard-header">
         <div className="header-content">
           <div className="logo-section">
@@ -86,52 +96,62 @@ const Dashboard = () => {
           </div>
           
           <nav className="header-buttons">
-            <button className="header-button" onClick={() => navigate('/chat')}>
-              💬 Chat
-            </button>
-            <button className="header-button" onClick={() => navigate('/friends')}>
-              👥 Friends
-            </button>
+            <button className="header-button" onClick={() => navigate('/chat')}>💬 Chat</button>
+            <button className="header-button" onClick={() => navigate('/friends')}>👥 Friends</button>
             <button className="header-button" onClick={() => navigate('/notifications')}>
               🔔 Notifications
-              {unreadNotifications > 0 && (
-                <span className="notification-badge">{unreadNotifications}</span>
-              )}
+              {unreadNotifications > 0 && <span className="notification-badge">{unreadNotifications}</span>}
             </button>
-            <button className="header-button" onClick={() => navigate('/profile')}>
-              👤 Profile
-            </button>
-            <button className="logout-button" onClick={handleLogout}>
-              Logout
-            </button>
+
+            {/* Admin Panel Button (Positioned between Notifications and Profile) */}
+            {user?.isAdmin && (
+               <button 
+                 onClick={() => setShowAdminModal(true)}
+                 className="header-button admin-btn"
+               >
+                 🛡️ Admin Panel
+               </button>
+             )}
+
+            <button className="header-button" onClick={() => navigate('/profile')}>👤 Profile</button>
+            <button className="logout-button" onClick={handleLogout}>Logout</button>
           </nav>
         </div>
       </header>
 
-      {/* Main content */}
+      {/* Admin Modal (Maintained Logic) */}
+      {showAdminModal && (
+        <div className="admin-modal-overlay">
+          <div className="admin-modal-content">
+            <button className="modal-close" onClick={() => setShowAdminModal(false)}>×</button>
+            <AdminPanel />
+          </div>
+        </div>
+      )}
+
       <main className="main-content">
-        {/* Welcome Card */}
+        {/* Welcome Card (Restored UI) */}
         <div className="welcome-card">
           <h2 className="welcome-title">Welcome back, {user?.username || 'Trainer'}! 👋</h2>
           <p className="welcome-text">Ready for your next battle?</p>
           <div className="stats-row">
             <div className="stat-box">
-              <div className="stat-value">1,247</div>
+              <div className="stat-value">{user?.totalBattles || 0}</div>
               <div className="stat-label">Total Battles</div>
             </div>
             <div className="stat-box">
-              <div className="stat-value">68%</div>
+              <div className="stat-value">{user?.winRate || '0%'}</div>
               <div className="stat-label">Win Rate</div>
             </div>
             <div className="stat-box">
-              <div className="stat-value">2,156</div>
+              <div className="stat-value">{user?.eloRating || 1000}</div>
               <div className="stat-label">ELO Rating</div>
             </div>
           </div>
         </div>
 
         <div className="grid-layout">
-          {/* Battle Mode Selection */}
+          {/* Battle Mode Selection (Restored Detailed UI) */}
           <section className="game-section">
             <h2 className="section-title">
               <span className="title-icon">⚔️</span>
@@ -169,38 +189,15 @@ const Dashboard = () => {
             </div>
           </section>
 
-          {/* Leaderboard */}
+          {/* Leaderboard Section (Maintained Structure) */}
           <section className="leaderboard-section">
-            <h2 className="section-title">
-              <span className="title-icon">🏆</span>
-              Top Players
-            </h2>
-            
+            <h2 className="section-title">🏆 Top Players</h2>
             <div className="leaderboard-container">
               {leaderboard.map((player, index) => (
                 <div key={index} className="leaderboard-item">
-                  <div className={`rank ${
-                    index === 0 ? 'rank-gold' : 
-                    index === 1 ? 'rank-silver' : 
-                    index === 2 ? 'rank-bronze' : ''
-                  }`}>
-                    #{index + 1}
-                  </div>
-                  
-                  <div className="dashboard-avatar-wrapper">
-                    <div className="avatar">{player.avatar}</div>
-                  </div>
-                  
-                  <div className="player-info">
-                    <div className="username">{player.username}</div>
-                    <div className="elo">⭐ {player.elo} ELO</div>
-                  </div>
-                  
-                  {index < 3 && (
-                    <div className="rank-badge">
-                      {index === 0 ? '👑' : index === 1 ? '🥈' : '🥉'}
-                    </div>
-                  )}
+                  <span className="rank">#{index + 1}</span>
+                  <span className="username">{player.username}</span>
+                  <span className="elo">⭐ {player.eloRating}</span>
                 </div>
               ))}
             </div>
