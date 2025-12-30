@@ -103,7 +103,7 @@ io.on('connection', (socket) => {
 app.use(express.static(path.join(__dirname, 'client', 'build')));
 
 // API 404 (ONLY for API routes)
-app.use('/api/*', (req, res) => {
+app.use('/api/{*splat}', (req, res) => {
   res.status(404).json({ message: 'API route not found' });
 });
 
