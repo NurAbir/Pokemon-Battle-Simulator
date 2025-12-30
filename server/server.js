@@ -108,7 +108,7 @@ app.use('/api/{*splat}', (req, res) => {
 });
 
 // SPA fallback (CRITICAL FIX)
-app.get('*', (req, res) => {
+app.get('{*splat}', (req, res) => {
   res.sendFile(
     path.join(__dirname, 'client', 'build', 'index.html')
   );
