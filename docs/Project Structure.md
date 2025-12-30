@@ -112,7 +112,7 @@ pokemon-battle-simulator/
 
 ---
 
-## 🚀 Step-by-Step Implementation
+## Step-by-Step Implementation
 
 ### **Step 1: Initialize Project**
 
