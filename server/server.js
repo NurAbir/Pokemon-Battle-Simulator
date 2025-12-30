@@ -5,6 +5,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+
 const connectDB = require('./config/database');
 const battleHandler = require('./sockets/battleHandler');
 const notificationHandler = require('./sockets/notificationHandler');
@@ -20,12 +21,19 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 
-app.set('trust proxy', 1)
+// Trust proxy (IMPORTANT for Render)
+app.set('trust proxy', 1);
+
+// Allowed origins
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:3000'
+].filter(Boolean);
 
 // Socket.IO setup with CORS
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL,
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -34,22 +42,22 @@ const io = socketIo(server, {
 // Make io available to routes
 app.set('io', io);
 
-// CORS Configuration
-const corsOptions = {
-  origin: process.env.CLIENT_URL,
-  credentials: true,
-  optionsSuccessStatus: 200
-};
+// CORS Configuration (HTTP)
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed'));
+    }
+  },
+  credentials: true
+}));
 
 // Middleware
-app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Set view engine
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, '../views'));
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -60,7 +68,7 @@ const notificationRoutes = require('./routes/notification');
 const friendRoutes = require('./routes/friend');
 const chatRoutes = require('./routes/chat');
 
-// Mount routes
+// Mount API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/teams', teamRoutes);
@@ -69,28 +77,41 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/chat', chatRoutes);
 
-// Initialize socket handlers
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-  
-  // Register notification socket events
-  notificationHandler(io, socket);
-  
-  // Register chat socket events
-  chatHandler(io, socket);
-});
-
-// Initialize battle handler (has its own io.on('connection'))
-battleHandler(io);
-
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+// --------------------
+// SOCKET.IO HANDLERS
+// --------------------
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  notificationHandler(io, socket);
+  chatHandler(io, socket);
+  battleHandler(io, socket);
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
+
+// --------------------
+// SERVE FRONTEND (SPA)
+// --------------------
+app.use(express.static(path.join(__dirname, 'client', 'build')));
+
+// API 404 (ONLY for API routes)
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ message: 'API route not found' });
+});
+
+// SPA fallback (CRITICAL FIX)
+app.get('*', (req, res) => {
+  res.sendFile(
+    path.join(__dirname, 'client', 'build', 'index.html')
+  );
 });
 
 // Error handler
@@ -104,7 +125,7 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Socket.IO server ready for connections`);
+  console.log('Socket.IO server ready');
 });
 
 module.exports = { io };
