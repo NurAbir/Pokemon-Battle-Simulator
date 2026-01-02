@@ -21,8 +21,6 @@ const FriendFinder = () => {
   const [successMessage, setSuccessMessage] = useState(null);
   const [activeTab, setActiveTab] = useState('search'); // search, friends
 
-  // Removed unused 'user' variable (line 24)
-
   // Fetch friends list
   const fetchFriends = useCallback(async () => {
     try {
